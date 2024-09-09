@@ -1,31 +1,33 @@
-declare const wx: {
-  getSystemInfoSync: Function
-}
-console.error('这里的declear const wx: 用的真是太好了')
+
+// console.error('这里的declear const wx: 用的真是太好了')
 
 class Browser {
-  firefox = false
-  ie = false
-  edge = false
-  newEdge = false
-  weChat = false
-  version: string | number
+  constructor() {
+    this.firefox = false;
+    this.ie = false
+    this.edge = false
+    this.newEdge = false
+    this.weChat = false
+    this.version = 0
+  }
 }
 
 class Env {
-  browser = new Browser()
-  node = false
-  wxa = false
-  worker = false
+  constructor() {
+    this.browser = new Browser();
+    this.node = false;
+    this.wxa = false;
+    this.worker = false;
 
-  svgSupported = false
-  touchEventSupported = false
-  pointerEventSupported = false
-  domSupported = false
-  transformSupported = false
-  transform3dSupported = false
+    this.svgSupported = false;
+    this.touchEventSupported = false;
+    this.pointerEventSupported = false;
+    this.domSupported = false;
+    this.transformSupported = false;
+    this.transform3dSupported = false;
 
-  hasGlobalWindow = typeof window !== 'undefined'
+    this.hasGlobalWindow = typeof window !== 'undefined';
+  }
 }
 
 const env = new Env()
@@ -44,7 +46,7 @@ if (typeof wx === 'object' && typeof wx.getSystemInfoSync === 'function') {
   detect(navigator.userAgent, env)
 }
 
-function detect(ua: string, env: Env) {
+function detect(ua, env) {
   const browser = env.browser;
   const firefox = ua.match(/Firefox\/([\d.]+)/);
   const ie = ua.match(/MSIE\s([\d.]+)/)
