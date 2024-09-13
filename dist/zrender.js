@@ -1,12 +1,72 @@
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
   typeof define === 'function' && define.amd ? define(['exports'], factory) :
-  (global = global || self, factory(global.zrender = {}));
-}(this, (function (exports) { 'use strict';
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.zrender = {}));
+})(this, (function (exports) { 'use strict';
+
+  const protoKey = '__proto__';
 
   let idStart =  0x0907;
   function guid() {
     return idStart++;
+  }
+
+  function keys(obj) {
+    if (!obj) {
+      return [];
+    }
+
+    if (Object.keys) {
+      return Object.keys(obj);
+    }
+    let keyList = [];
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        keyList.push(key);
+      }
+    }
+    return keyList;
+  }
+
+  function createObject(proto = null, properties = null) {
+    let obj;
+    if (Object.create) {
+      obj = Object.create(proto);
+    } else {
+      const StyleCtor = function () {};
+      StyleCtor.prototype = proto;
+      obj = new StyleCtor();
+    }
+
+    if (properties) {
+      extend(obj, properties); // 对象拼接拿到新的obj
+    }
+
+    return obj;
+  }
+
+  function extend(target, obj) {
+    if (Object.assign) {
+      Object.assign(target, obj);
+    } else {
+      for (let key in obj) {
+        if (obj.hasOwnProperty(key) && key !== protoKey) {
+          target[key] = obj[key];
+        }
+      }
+    }
+    return target;
+  }
+
+  function defaults(target, obj, overlay = undefined) {
+    const keysArr = keys(obj);
+    for (let i = 0; i < keysArr.length; i++ ) {
+      let key = keysArr[i];
+      if (overlay ? obj[key] != null : target[key] == null) { // 为null才会覆盖
+        target[key] = obj[key];
+      }
+    }
+    return target;
   }
 
   // console.error('这里的declear const wx: 用的真是太好了')
@@ -245,6 +305,7 @@
   }
 
   const painterCtors = {};
+  let instances = {};
 
   class ZRender {
 
@@ -298,7 +359,7 @@
     _flush(fromInside = undefined) {
       let triggerRendered;
 
-      const start = getTime();
+      getTime();
       if (this._needsRefresh) {
         triggerRendered = true;
         this.refreshImmediately(fromInside);
@@ -309,7 +370,7 @@
         this.refreshHoverImmediately();
       }
 
-      const end = getTime();
+      getTime();
       if (triggerRendered) {
         this.trigger('renderd');
       }
@@ -326,11 +387,218 @@
    */
   function init(dom = null, opts = null) {
     const zr = new ZRender(guid(), dom, opts);
+    instances[zr.id] = zr;
     return zr;
   }
 
   function registerPainter(name, Ctor) {
     painterCtors[name] = Ctor;
+  }
+
+  const REDRAW_BIT = 1; // 0001
+  const STYLE_CHANGED_BIT = 2; // 0010
+
+  class Element {
+    constructor(props = null) {
+      this._init(props);
+    }
+
+    attrKV(key, value) {
+      if (key === 'textConfig') ; else if (key === 'textContent') ; else if (key === 'clipPath') ; else if (key === 'extra') ; else {
+        this[key] = value;
+      }
+    }
+
+    markRedraw() {
+      this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
+      const zr = this.__zr;
+      if (zr) {
+        console.info('next...');
+      }
+    }
+
+    static initDefaultProps = (function () {
+      const elProto = Element.prototype;
+      elProto.type = 'element';
+      elProto.name = '';
+
+      function createLegacyProperty(key, privateKey, xKey, yKey) {
+        // 设置position scale origin 三个属性会走里面的set方法
+        Object.defineProperty(elProto, key, {
+          get() {
+            if (!this[privateKey]) {
+              const pos = this[privateKey] = [];
+              enhanceArray(this, pos);
+            }
+            return this[privateKey];
+          },
+          set(pos) {
+            this[xKey] = pos[0];
+            this[yKey] = pos[1];
+            this[privateKey] = pos;
+            enhanceArray(this, pos);
+          }
+        });
+        function enhanceArray(self, pos) {
+          Object.defineProperty(pos, 0, {
+            get() {
+              return self[xKey];
+            },
+            set(val) {
+              self[xKey] = val;
+            }
+          });
+          Object.defineProperty(pos, 1, {
+            get() {
+              return self[yKey];
+            },
+            set(val) {
+              self[yKey] = val;
+            }
+          });
+        }
+      }
+      if (Object.defineProperty) { // 只是不支持ie8
+        createLegacyProperty('position', '_legacyPos', 'x', 'y');
+        createLegacyProperty('scale', '_legacyScale', 'scaleX', 'scaleY');
+        createLegacyProperty('orgin', '_legacyOrigin', 'originX', 'originY');
+      }
+    })()
+  }
+
+  const STYLE_MAGIC_KEY = '__zr_style_' + Math.round((Math.random() * 10));
+
+  const DEFAULT_COMMON_STYLE = {
+    shadowBlur: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+    shadowColor: '#000',
+    opacity: 1,
+    blend: 'source-over'
+  };
+
+  class Displayable extends Element {
+    constructor(props = null) {
+      super(props);
+    }
+
+    _init(props = null) {
+
+    }
+
+    useStyle(obj) {
+      if (!obj[STYLE_MAGIC_KEY]) {
+        obj = this.createStyle(obj);
+      }
+
+      this.style = obj;
+
+      this.dirtyStyle();
+    }
+
+    dirtyStyle(notRedraw = undefined) {
+      if (!notRedraw) {
+        this.markRedraw();
+      }
+
+      this.__dirty |= STYLE_CHANGED_BIT;
+
+      if (this._rect) {
+        this._rect = null;
+      }
+    }
+
+    attrKV(key, value) {
+      super.attrKV(key, value);
+    }
+  }
+
+  const DEFAULT_PATH_STYLE = defaults({
+    fill: '#000',
+    stroke: null,
+    strokePercent: 1,
+    fillOpacity: 1,
+    strokeOpacity: 1,
+
+    lineDashOffset: 0,
+    lineWidth: 1,
+    lineCap: 'butt',
+    miterLimit: 10,
+    
+    strokeNoScale: false,
+    strokeFirst: false
+  }, DEFAULT_COMMON_STYLE);
+
+  class Path extends Displayable {
+    constructor(opts = null) {
+      super(opts);
+    }
+
+    _init(props = null) {
+      const keysArr = keys(props);
+
+      this.shape = this.getDefaultShape();
+      const defaultStyle = this.getDefaultStyle();
+      if (defaultStyle) {
+        this.useStyle(defaultStyle);
+      }
+
+      for (let i = 0; i < keysArr.length; i++) {
+        const key = keysArr[i];
+        const value = props[key];
+        if (key === 'style') {
+          if (!this.style) {
+            this.useStyle(value);
+          } else {
+            extend(this.style, value);
+          }
+        } else if (key === 'shape') {
+          extend(this.shape, value);
+        } else {
+          super.attrKV(key, value);
+        }
+      }
+
+      if (!this.style) {
+        this.useStyle({});
+      }
+    }
+
+    createStyle(obj = null) {
+      return createObject(DEFAULT_PATH_STYLE, obj)
+    }
+  }
+
+  class BezierCurveShape {
+    constructor(cpx2 = undefined, cpy2 = undefined) {
+      this.x1 = 0;
+      this.y1 = 0;
+      this.x2 = 0;
+      this.y2 = 0;
+      this.cpx1 = 0;
+      this.cpy1 = 0;
+      this.cpx2 = cpx2;
+      this.cpy2 = cpy2;
+      
+      this.percent = 1;
+    }
+  }
+
+  class BezierCurve extends Path {
+    constructor(opts = null) {
+      super(opts);
+    }
+
+    getDefaultStyle() {
+      return {
+        stroke: '#000',
+        fill: null
+      }
+    }
+
+    getDefaultShape() {
+      return new BezierCurveShape();
+    }
   }
 
   class CanvasPainter {
@@ -451,10 +719,12 @@
   registerPainter('canvas', CanvasPainter);
   registerPainter('svg', SVGPainter);
 
+  exports.BezierCurve = BezierCurve;
+  exports.BezierCurveShape = BezierCurveShape;
   exports.init = init;
   exports.registerPainter = registerPainter;
 
   Object.defineProperty(exports, '__esModule', { value: true });
 
-})));
+}));
 //# sourceMappingURL=zrender.js.map

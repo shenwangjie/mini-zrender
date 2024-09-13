@@ -10,23 +10,24 @@
     <script type="text/javascript">
         debugger
         var zr = zrender.init(document.getElementById('main'));
-        console.log(zr);
-        // var curve = new zrender.BezierCurve({
-        //     position: [0, 0],
-        //     scale: [1, 1],
-        //     shape: {
-        //         x1: 10,
-        //         y1: 400,
-        //         cpx1: 0,
-        //         cpy1: 0,
-        //         cpx2: 0,
-        //         cpy2: 0,
-        //         x2: 300,
-        //         y2: 30
-        //     },
-        //     draggable: true
-        // });
-
+        // console.log(zr);
+        var curve = new zrender.BezierCurve({
+            position: [0, 0],
+            scale: [1, 1],
+            shape: {
+                x1: 10,
+                y1: 400,
+                cpx1: 0,
+                cpy1: 0,
+                cpx2: 0,
+                cpy2: 0,
+                x2: 300,
+                y2: 30
+            },
+            draggable: true
+        });
+        console.log(curve);
+        
         // zr.add(curve);
 
         // curve.animateTo({
