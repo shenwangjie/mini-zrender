@@ -1,4 +1,6 @@
 import { REDRAW_BIT } from './graphic/constants'
+import Transformable from './core/Transformable'
+import { mixin } from './core/util'
 class Element {
   constructor(props = null) {
     this._init(props)
@@ -18,12 +20,30 @@ class Element {
     }
   }
 
+  beforeUpdate() {}
+
+  update() {
+    this.updateTransform();
+
+    if (this.__dirty) {
+      this.updateInnerText();
+    }
+  }
+
+  updateInnerText(forceUpdate = undefined) {
+
+  }
+
   markRedraw() {
     this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
     const zr = this.__zr;
     if (zr) {
       console.info('next...')
     }
+  }
+
+  getClipPath() {
+    return this._clipPath;
   }
 
   static initDefaultProps = (function () {
@@ -74,5 +94,7 @@ class Element {
     }
   })()
 }
+
+mixin(Element, Transformable);
 
 export default Element;

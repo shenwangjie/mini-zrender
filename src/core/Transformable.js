@@ -1,0 +1,5 @@
+class Transformable {
+  updateTransform() {
+    return;
+  }
+}

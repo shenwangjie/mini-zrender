@@ -55,6 +55,10 @@ class Path extends Displayable {
   createStyle(obj = null) {
     return createObject(DEFAULT_PATH_STYLE, obj)
   }
+
+  update() {
+    super.update();
+  }
 }
 
 export default Path

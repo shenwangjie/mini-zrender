@@ -1,7 +1,32 @@
 import Storage from "../Storage";
+import { getSize } from './helper';
+import Layer from "./Layer";
 
+const EL_AFTER_INCREMENTAL_INC = 0.01;
+
+function createRoot(width, height) {
+    const domRoot = document.createElement('div');
+
+    domRoot.style.cssText = [
+      'position: relative',
+      'width:' + width + 'px',
+      'height:' + height + 'px',
+      'padding: 0',
+      'margin: 0',
+      'border-width: 0'
+    ].join(';') + ';';
+
+    return domRoot;
+}
+
+function isLayerValid(layer) {
+  if (!layer) return false;
+
+  if (layer.__builtin__) return true;
+}
 export default class CanvasPainter {
-  
+  _needsManuallyCompositing = false
+
   constructor(root, storage, opts, id) {
     this.type = "canvas";
 
@@ -13,6 +38,21 @@ export default class CanvasPainter {
     this.root = root;
 
     this._preDisplayList = [];
+
+    const singleCanvas = !root.nodeName 
+      || root.nodeName.toUpperCase() === 'CANVAS';
+
+    this._singleCanvas = singleCanvas;
+
+    if (!singleCanvas) {
+      this._width = getSize(root, 0, opts);
+      this._height = getSize(root, 1, opts);
+
+      const domRoot = this._domRoot = createRoot(
+        this._width, this._height
+      );
+      root.appendChild(domRoot);
+    }
   }
 
   getType() {
@@ -64,7 +104,7 @@ export default class CanvasPainter {
       })
     }
   }
-  // 等于啥都没干
+  
   _updateLayerStatus(list) {
     this.eachBuiltinLayer(function (layer, z) {
 
@@ -82,6 +122,36 @@ export default class CanvasPainter {
     let i;
 
     for (i = 0; i < list.length; i++) {
+      const el = list[i];
+      const zlevel = el.zlevel;
+      let layer;
+
+      if (prevZlevel !== zlevel) {
+        prevZlevel = zlevel;
+        incrementalLayerCount = 0;
+      }
+
+      if (el.incremental) {
+
+      } else {
+        layer = this.getLayer(
+          zlevel + (incrementalLayerCount > 0 ? EL_AFTER_INCREMENTAL_INC : 0),
+          this._needsManuallyCompositing
+        )
+      }
+
+      if (layer !== prevLayer) {
+        layer.__used = true;
+        layer.__startIndex = i;
+        if (!layer.incremental) {
+          layer.__drawIndex = i;
+        } else {
+          // 标记需要被更新
+          layer.__drawIndex = -1;
+        }
+        updatePrevLayer(i);
+        prevLayer = layer;
+      }
 
     }
 
@@ -90,6 +160,52 @@ export default class CanvasPainter {
     this.eachBuiltinLayer(function (layer, z) {
 
     })
+  }
+
+  getLayer(zlevel, virtual = undefined) {
+    let layer = this._layers[zlevel];
+    if (!layer) {
+      // 创建一个新的layer
+      layer = new Layer('zr_' + zlevel, this, this.dpr);
+      layer.zlevel = zlevel;
+      layer.__builtin__ = true;
+
+      this.insertLayer(zlevel, layer);
+
+      layer.initContext();
+    }
+
+    return layer;
+  }
+
+  insertLayer(zlevel, layer) {
+    const layersMap = this._layers;
+    const zlevelList = this._zlevelList;
+    const len = zlevelList.length;
+    const domRoot = this._domRoot;
+    let prevLayer = null;
+    let i = -1;
+
+    zlevelList.splice(i + 1, 0, zlevel);
+
+    layersMap[zlevel] = layer;
+
+    // Virtual layer will not directly show on the screen.
+    // (It can be a WebGL layer and assigned to a ZRImage element)
+    // But it still under management of zrender.
+    if (!layer.virtual) {
+      if (prevLayer) {
+
+      } else {
+        if (domRoot.firstChild) {
+
+        } else {
+          domRoot.appendChild(layer.dom);
+        }
+      }
+    }
+    console.error('下面的啥意思')
+    layer.painter || (layer.painter = this);
   }
 
   eachLayer(cb, content) {
@@ -124,5 +240,13 @@ export default class CanvasPainter {
 
   getViewportRoot() {
     return this._domRoot;
+  }
+
+  getWidth() {
+    return this._width;
+  }
+
+  getHeight() {
+    return this._height;
   }
 }

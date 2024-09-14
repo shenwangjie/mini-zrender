@@ -63,3 +63,30 @@ export function defaults(target, obj, overlay = undefined) {
   }
   return target;
 }
+
+export function mixin(target, obj, override = undefined) {
+  target = 'prototype' in target ? target.prototype : target;
+  obj = 'prototype' in obj ? obj.prototype : obj;
+
+  if (Object.getOwnPropertyNames) {
+    const keyList = Object.getOwnPropertyNames(obj);
+    for (let i = 0; i < keyList.length; i ++) {
+      const key = keyList[i];
+      if (key !== 'constructor') {
+        if (override ? obj[key] != null : target[key] == null) {
+          target[key] = obj[key];
+        }
+      }
+    }
+  } else {
+    defaults(target, obj, override);
+  }
+}
+
+export function disableUserSelect(dom) {
+  const domStyle = dom.style;
+  domStyle.webkitUserSelect = 'none';
+  domStyle.userSelect = 'none';
+  domStyle.webkitTapHighlightColor = 'rgba(0,0,0,0)';
+  domStyle['webkit-touch-callout'] = 'none';
+}

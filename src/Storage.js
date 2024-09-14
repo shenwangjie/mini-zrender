@@ -3,7 +3,7 @@ import timsort from './core/timesort'
 export default class Storage {
   
   constructor() {
-    this.roots = []
+    this._roots = []
     this._displayList = []
     this._displayListLen = 0
   }
@@ -26,8 +26,32 @@ export default class Storage {
     this._displayListLen = 0;
 
     const displayList = this._displayList;
+    const roots = this._roots;
+    for (let i = 0, len = roots.length; i < len; i ++) {
+      this._updateAndAddDisplayable(roots[i]);
+    }
     
     displayList.length = this._displayListLen;
     timsort(displayList, null);
+  }
+
+  _updateAndAddDisplayable(el) {
+    el.beforeUpdate();
+    el.update();
+    el.afterUpdate();
+
+    const userSetClipPath = el.getClipPath();
+    if (el.ignoreClip) {
+
+    } else if (userSetClipPath) {
+
+    }
+
+    if (el.childrenRef) {
+
+    } else {
+      const disp = el;
+      this._displayList[this._displayListLen++] = disp;
+    }
   }
 }
