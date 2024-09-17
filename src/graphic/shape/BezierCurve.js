@@ -30,6 +30,33 @@ class BezierCurve extends Path {
   getDefaultShape() {
     return new BezierCurveShape();
   }
+
+  buildPath(ctx, shape) {
+    let x1 = shape.x1;
+    let y1 = shape.y1;
+    let x2 = shape.x2;
+    let y2 = shape.y2;
+    let cpx1 = shape.cpx1;
+    let cpx2 = shape.cpx2;
+    let cpy1 = shape.cpy1;
+    let cpy2 = shape.cpy2;
+    let percent = shape.percent;
+    if (percent === 0) {
+      return;
+    }
+
+    ctx.moveTo(x1, y1);
+
+    if (cpx2 == null || cpy2 == null) {
+
+    } else {
+      if (percent < 1) {
+
+      }
+      ctx.bezierCurveTo(cpx1, cpy1, cpx2, cpy2, x2, y2);
+    }
+  }
+  
 }
 
 export default BezierCurve;

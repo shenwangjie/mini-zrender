@@ -54,6 +54,22 @@ class Layer extends Eventful {
     this.ctx = this.dom.getContext('2d');
     this.ctx.dpr = this.dpr;
   }
+
+  clear(clearAll, clearColor, repaintRects) {
+    const ctx = this.ctx;
+    function doClear(x, y, width, height) {
+      ctx.clearRect(x, y, width, height);
+    }
+
+    if (!repaintRects) {
+      doClear(0, 0, width, height);
+    }
+  }
+
+  afterBrush() {
+    this.__prevStartIndex = this.__startIndex;
+    this.__prevEndIndex = this.__endIndex;
+  }
 }
 
 export default Layer;

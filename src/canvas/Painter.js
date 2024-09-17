@@ -1,6 +1,7 @@
 import Storage from "../Storage";
 import { getSize } from './helper';
 import Layer from "./Layer";
+import { REDRAW_BIT } from '../graphic/constants'
 
 const EL_AFTER_INCREMENTAL_INC = 0.01;
 
@@ -68,6 +69,11 @@ export default class CanvasPainter {
 
     this._paintList(list, prevList, undefined, this._redrawId);
 
+    for (let i = 0; i < zlevelList.length; i ++) {
+      const z = zlevelList[i];
+      const layer = this._layers[z];
+    }
+
     return this;
   }
 
@@ -100,7 +106,7 @@ export default class CanvasPainter {
 
     } else {
       this.eachLayer(layer => {
-        
+        layer.afterBrush && layer.afterBrush();
       })
     }
   }
@@ -112,7 +118,10 @@ export default class CanvasPainter {
 
     function updatePrevLayer(idx) {
       if (prevLayer) {
-
+        if (prevLayer.__endIndex !== idx) {
+          prevLayer.__dirty = true;
+        }
+        prevLayer.__endIndex = idx;
       }
     }
 
@@ -153,6 +162,9 @@ export default class CanvasPainter {
         prevLayer = layer;
       }
 
+      if ((el.__dirty & REDRAW_BIT) && !el.__inHover) {
+        layer.__dirty = true;
+      }
     }
 
     updatePrevLayer(i)
@@ -208,34 +220,93 @@ export default class CanvasPainter {
     layer.painter || (layer.painter = this);
   }
 
-  eachLayer(cb, content) {
+  eachLayer(cb, context) {
     const zlevelList = this._zlevelList;
     for (let i = 0; i < zlevelList.length; i++) {
-
+      const z = zlevelList[i];
+      cb.call(context, this._layers[z], z);
     }
   }
   eachBuiltinLayer(cb, context) {
     const zlevelList = this._zlevelList;
     for (let i = 0; i < zlevelList.length; i++) {
-      
+      const z = zlevelList[i];
+      // _layers什么时候赋值的
+      const layer = this._layers[z];
+      if (layer.__builtin__) {
+        cb.call(context, layer, z);
+      }
     }
   }
 
   _doPaintList(list, prevList, paintAll = undefined) {
     const layerList = [];
     for (let zi = 0; zi < this._zlevelList.length; zi++) {
-      
+      const zlevel = this._zlevelList[zi];
+      const layer = this._layers[zlevel];
+      if (layer.__builtin__ 
+        && layer !== this._hoverLayer
+        && (layer.__dirty || paintAll)) {
+          layerList.push(layer);
+        }
     }
 
     let finished = true;
     
     for (let k = 0; k < layerList.length; k++) {
+      const layer = layerList[k];
+      const ctx = layer.ctx;
 
+      const repaintRects = false;
+
+      let start = paintAll ? layer.__startIndex : layer.__drawIndex;
+
+      const clearColor = layer.zlevel === this._zlevelList[0] ? this._backgroundColor : null;
+
+      if (layer.__startIndex === layer.__endIndex) {
+
+      } else if (start === layer.__startIndex) {
+        const firstEl = list[start];
+        if (!firstEl.incremental || !firstEl.notClear || paintAll) {
+          layer.clear(false, clearColor, repaintRects);
+        }
+      }
+
+      let i;
+      const repaint = (repaintRect) => {
+        const scope = {
+          inHover: false,
+          allClipped: false,
+          prevEl: null,
+          viewWidth: this._width,
+          viewHeight: this._height
+        }
+        for (i = start; i < layer.__endIndex; i ++) {
+          const el = list[i];
+
+          this._doPaintEl(el, layer, false, repaintRect, scope, i === layer.__endIndex - 1);
+        }
+      }
+
+      if (repaintRects) {
+
+      } else {
+        ctx.save();
+        repaint();
+        ctx.restore();
+      }
+
+      layer.__drawIndex = i;
     }
 
     return {
       finished
     }
+  }
+
+  _doPaintEl(el, currentLayer, useDirtyRect, repaintRect, scope, isLast) {
+    const ctx = currentLayer.ctx;
+    brush(ctx, el, scope, isLast);
   }
 
   getViewportRoot() {

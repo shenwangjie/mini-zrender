@@ -1,5 +1,6 @@
 import Displayable, { DEFAULT_COMMON_STYLE } from './Displayable';
 import { keys, createObject, defaults, extend } from '../core/util'
+import { SHAPE_CHANGED_BIT } from './constants';
 
 export const DEFAULT_PATH_STYLE = defaults({
   fill: '#000',
@@ -50,6 +51,21 @@ class Path extends Displayable {
     if (!this.style) {
       this.useStyle({})
     }
+  }
+
+  pathUpdated() {
+    this._dirty &= ~SHAPE_CHANGED_BIT;
+    // this._dirty = this._dirty & (~SHAPE_CHANGED_BIT);
+  }
+
+  createPathProxy() {
+    this.path = new PathProxy(false);
+  }
+
+  hasStroke() {
+    const style = this.style;
+    const stroke = style.stroke;
+    return !(stroke == null || stroke === 'none' || !(style.lineWidth > 0))
   }
 
   createStyle(obj = null) {

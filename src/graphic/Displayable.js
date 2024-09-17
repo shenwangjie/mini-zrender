@@ -21,6 +21,12 @@ class Displayable extends Element {
 
   }
 
+  beforeBrush() {}
+  afterBrush() {}
+
+  innerBeforeBrush() {}
+  innerAfterBrush() {}
+
   useStyle(obj) {
     if (!obj[STYLE_MAGIC_KEY]) {
       obj = this.createStyle(obj)

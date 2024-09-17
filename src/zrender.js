@@ -74,7 +74,10 @@ class ZRender {
 
     const end = getTime();
     if (triggerRendered) {
-      this.trigger('renderd')
+      this._stillFrameAccum = 0;
+      this.trigger('rendered', {
+        elapsedTime: end - start
+      })
     }
   }
 
