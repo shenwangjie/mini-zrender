@@ -1,6 +1,7 @@
 import Displayable, { DEFAULT_COMMON_STYLE } from './Displayable';
 import { keys, createObject, defaults, extend } from '../core/util'
 import { SHAPE_CHANGED_BIT } from './constants';
+import PathProxy from '../core/PathProxy';
 
 export const DEFAULT_PATH_STYLE = defaults({
   fill: '#000',

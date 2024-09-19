@@ -13,3 +13,5 @@ class Transformable {
     }
   }
 }
+
+export default Transformable;

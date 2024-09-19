@@ -8,20 +8,38 @@
 <body>
     <div id="main" style="width:1000px;height:600px;"></div>
     <script type="text/javascript">
-        const obj = {
-            myFun() {
-                console.log('111111')
-            },
-            a: 1,
-            b: 2,
-            IIFN: (function(){
-                // obj.myFun();
-                console.log('222222')
-                return () => {
-                    obj.myFun();
-                }
-            })()
-        }
+        // const obj = {
+        //     myFun() {
+        //         console.log('111111')
+        //     },
+        //     a: 1,
+        //     b: 2,
+        //     IIFN: (function(){
+        //         // obj.myFun();
+        //         console.log('222222')
+        //         return () => {
+        //             obj.myFun();
+        //         }
+        //     })()
+        // }
+
+        // class A {
+        //     _arr = []
+        //     doSome() {
+        //         const arr = this._arr;
+        //         this.doOtherThing();
+        //         return arr;
+        //     }
+
+        //     doOtherThing() {
+        //         this._arr[0] = {'come': '121'};
+        //         this._arr.push('ewqrqwere')
+        //     }
+        // }
+
+        // const a = new A();
+        // const arr = a.doSome();
+        // console.log(arr);
         debugger
         var zr = zrender.init(document.getElementById('main'));
         // console.log(zr);
@@ -40,9 +58,9 @@
             },
             draggable: true
         });
-        console.log(curve);
+        // console.log(curve);
 
-        // zr.add(curve);
+        zr.add(curve);
 
         // curve.animateTo({
         //     shape: {

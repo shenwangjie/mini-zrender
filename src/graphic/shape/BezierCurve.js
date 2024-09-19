@@ -31,7 +31,7 @@ class BezierCurve extends Path {
     return new BezierCurveShape();
   }
 
-  buildPath(ctx, shape) {
+  buildPath(path, shape) {
     let x1 = shape.x1;
     let y1 = shape.y1;
     let x2 = shape.x2;
@@ -45,7 +45,7 @@ class BezierCurve extends Path {
       return;
     }
 
-    ctx.moveTo(x1, y1);
+    path.moveTo(x1, y1);
 
     if (cpx2 == null || cpy2 == null) {
 
@@ -53,7 +53,7 @@ class BezierCurve extends Path {
       if (percent < 1) {
 
       }
-      ctx.bezierCurveTo(cpx1, cpy1, cpx2, cpy2, x2, y2);
+      path.bezierCurveTo(cpx1, cpy1, cpx2, cpy2, x2, y2);
     }
   }
   

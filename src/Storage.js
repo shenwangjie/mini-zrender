@@ -8,7 +8,7 @@ export default class Storage {
     this._displayListLen = 0
   }
   
-  // 拿到一串需要被渲染的elements
+  // 获取一串需要被渲染的elements
   getDisplayList(update = undefined) {
     const displayList = this._displayList;
     if (update || !displayList.length) {
@@ -36,22 +36,20 @@ export default class Storage {
   }
 
   _updateAndAddDisplayable(el) {
-    el.beforeUpdate();
-    el.update();
-    el.afterUpdate();
+    // el.beforeUpdate();
+    // el.update();
+    // el.afterUpdate();
 
-    const userSetClipPath = el.getClipPath();
-    if (el.ignoreClip) {
-
-    } else if (userSetClipPath) {
-
-    }
-
+    // const userSetClipPath = el.getClipPath();
     if (el.childrenRef) {
 
     } else {
       const disp = el;
       this._displayList[this._displayListLen++] = disp;
     }
+  }
+
+  addRoot(el) {
+    this._roots.push(el);
   }
 }

@@ -1,5 +1,5 @@
 import Element from '../Element'
-import { STYLE_CHANGED_BIT } from './constants'
+import { REDRAW_BIT, STYLE_CHANGED_BIT } from './constants'
 
 const STYLE_MAGIC_KEY = '__zr_style_' + Math.round((Math.random() * 10));
 
@@ -13,6 +13,7 @@ export const DEFAULT_COMMON_STYLE = {
 }
 
 class Displayable extends Element {
+
   constructor(props = null) {
     super(props);
   }
@@ -52,6 +53,13 @@ class Displayable extends Element {
   attrKV(key, value) {
     super.attrKV(key, value);
   }
+
+  static initDefaultProps = (function () {
+    const dispProto = Displayable.prototype;
+    dispProto.zlevel = 0;
+
+    dispProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT;
+  })()
 }
 
 export default Displayable;

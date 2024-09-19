@@ -84,6 +84,17 @@ class ZRender {
   trigger(eventName, event = null) {
     this.handler.trigger(eventName, event);
   }
+
+  add(el) {
+    this.storage.addRoot(el);
+    el.addSelfToZr(this);
+    this.refresh();
+  }
+
+  refresh() {
+    this._needsRefresh = true;
+    this.animation.start();
+  }
 }
 
 /**

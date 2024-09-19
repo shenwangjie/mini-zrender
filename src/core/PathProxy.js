@@ -67,6 +67,18 @@ export default class PathProxy {
 
   }
 
+  moveTo(x, y) {
+    this.addData(CMD.M, x, y);
+    this._ctx && this._ctx.moveTo(x, y);
+
+    this._x0 = x;
+    this._y0 = y;
+    this._xi = x;
+    this._yi = y;
+    
+    return this;
+  }
+
   bezierCurveTo(x1, y1, x2, y2, x3, y3) {
     this.addData(CMD.C, x1, y1, x2, y2, x3, y3);
     if (this._ctx) {

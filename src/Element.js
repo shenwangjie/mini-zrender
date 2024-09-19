@@ -21,6 +21,7 @@ class Element {
   }
 
   beforeUpdate() {}
+  afterUpdate() {}
 
   update() {
     this.updateTransform();
@@ -44,6 +45,10 @@ class Element {
 
   getClipPath() {
     return this._clipPath;
+  }
+
+  addSelfToZr(zr) {
+    this.__zr = zr;
   }
 
   static initDefaultProps = (function () {

@@ -2,6 +2,7 @@ import Storage from "../Storage";
 import { getSize } from './helper';
 import Layer from "./Layer";
 import { REDRAW_BIT } from '../graphic/constants'
+import { brush } from "./graphic";
 
 const EL_AFTER_INCREMENTAL_INC = 0.01;
 
@@ -27,6 +28,8 @@ function isLayerValid(layer) {
 }
 export default class CanvasPainter {
   _needsManuallyCompositing = false
+  
+  _layers = {} // key is zlevel
 
   constructor(root, storage, opts, id) {
     this.type = "canvas";
@@ -65,6 +68,7 @@ export default class CanvasPainter {
     const list = this.storage.getDisplayList(true);
     const prevList = this._preDisplayList;
 
+    const zlevelList = this._zlevelList;
     this._redrawId = Math.random();
 
     this._paintList(list, prevList, undefined, this._redrawId);
@@ -112,10 +116,6 @@ export default class CanvasPainter {
   }
   
   _updateLayerStatus(list) {
-    this.eachBuiltinLayer(function (layer, z) {
-
-    });
-
     function updatePrevLayer(idx) {
       if (prevLayer) {
         if (prevLayer.__endIndex !== idx) {
@@ -126,28 +126,12 @@ export default class CanvasPainter {
     }
 
     let prevLayer = null;
-    let incrementalLayerCount = 0;
-    let prevZlevel;
     let i;
 
     for (i = 0; i < list.length; i++) {
       const el = list[i];
       const zlevel = el.zlevel;
-      let layer;
-
-      if (prevZlevel !== zlevel) {
-        prevZlevel = zlevel;
-        incrementalLayerCount = 0;
-      }
-
-      if (el.incremental) {
-
-      } else {
-        layer = this.getLayer(
-          zlevel + (incrementalLayerCount > 0 ? EL_AFTER_INCREMENTAL_INC : 0),
-          this._needsManuallyCompositing
-        )
-      }
+      let layer = this.getLayer(zlevel + 0, false)
 
       if (layer !== prevLayer) {
         layer.__used = true;
@@ -155,10 +139,9 @@ export default class CanvasPainter {
         if (!layer.incremental) {
           layer.__drawIndex = i;
         } else {
-          // 标记需要被更新
           layer.__drawIndex = -1;
         }
-        updatePrevLayer(i);
+        // updatePrevLayer(i);
         prevLayer = layer;
       }
 
@@ -166,12 +149,7 @@ export default class CanvasPainter {
         layer.__dirty = true;
       }
     }
-
     updatePrevLayer(i)
-
-    this.eachBuiltinLayer(function (layer, z) {
-
-    })
   }
 
   getLayer(zlevel, virtual = undefined) {

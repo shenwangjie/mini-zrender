@@ -1,6 +1,7 @@
 import Eventful from '../core/Eventful'
 import { devicePixelRatio } from '../config'
 import { platformApi } from '../core/platform'
+import * as util from '../core/util'
 
 function createDom(id, painter, dpr) {
   const newDom = platformApi.createCanvas();
@@ -18,7 +19,6 @@ function createDom(id, painter, dpr) {
     newDom.setAttribute('data-zr-dom-id', id);
   }
 
-  // thinking
   newDom.width = width * dpr;
   newDom.height = height * dpr;
 
@@ -57,6 +57,9 @@ class Layer extends Eventful {
 
   clear(clearAll, clearColor, repaintRects) {
     const ctx = this.ctx;
+    const dom = this.dom;
+    const width = dom.width;
+    const height = dom.height;
     function doClear(x, y, width, height) {
       ctx.clearRect(x, y, width, height);
     }

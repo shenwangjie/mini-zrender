@@ -1,5 +1,6 @@
 import PathProxy from '../core/PathProxy.js'
 import { SHAPE_CHANGED_BIT } from '../graphic/constants.js'
+import Path from '../graphic/Path.js';
 
 const DRAW_TYPE_PATH = 1;
 const DRAW_TYPE_IMAGE = 2;
@@ -103,6 +104,7 @@ function bindCommonProps(ctx, style, prevStyle, forceSetAll, scope) {
 
 function bindPathAndTextCommonStyle(ctx, el, prevEl, forceSetAll, scope) {
   const style = getStyle(el, scope.inHover);
+  const prevStyle = forceSetAll ? null : (prevEl && getStyle(prevEl, scope.inHover) || {});
 
   let styleChanged = bindCommonProps(ctx, style, prevStyle, forceSetAll, scope);
 
@@ -206,7 +208,7 @@ function brushPath(ctx, el, style, inBatch) {
     el.buildPath(path, el.shape, inBatch);
     path.toStatic();
 
-    el.pathUpdate();
+    el.pathUpdated();
   }
 
   if (!inBatch) {
