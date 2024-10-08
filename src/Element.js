@@ -1,7 +1,10 @@
 import { REDRAW_BIT } from './graphic/constants'
 import Transformable from './core/Transformable'
 import { mixin } from './core/util'
+import Animator from './animation/Animator'
 class Element {
+  animators = []
+
   constructor(props = null) {
     this._init(props)
   }
@@ -34,12 +37,12 @@ class Element {
   updateInnerText(forceUpdate = undefined) {
 
   }
-
+  // 标记重绘
   markRedraw() {
     this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
     const zr = this.__zr;
     if (zr) {
-      console.info('next...')
+      zr.refresh();
     }
   }
 
@@ -49,6 +52,34 @@ class Element {
 
   addSelfToZr(zr) {
     this.__zr = zr;
+  }
+
+  animate(key, loop) {
+    let target = key ? this[key] : this;
+
+    const animator = new Animator(target, loop);
+    key && (animator.targetName = key);
+    this.addAnimator(animator, key);
+    return animator;
+  }
+
+  addAnimator(animator, key) {
+    const zr = this.__zr;
+    const el = this;
+
+    animator.during(function () {
+      el.updateDuringAnimation(key);
+    }).done(function () {
+
+    })
+
+    this.animators.push(animator);
+
+    if (zr) {
+      zr.animation.addAnimator(animator);
+    }
+    // 唤醒zrender去循环动画
+    zr && zr.wakeUp();
   }
 
   static initDefaultProps = (function () {

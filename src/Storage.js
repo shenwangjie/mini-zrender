@@ -1,11 +1,12 @@
 
 import timsort from './core/timesort'
 export default class Storage {
-  
+  _roots = [] // 存储element
+  _displayList = [] // 存储element
+  _displayListLen = 0
+
   constructor() {
-    this._roots = []
-    this._displayList = []
-    this._displayListLen = 0
+    console.error('_roots和_displayList区别，一个存储Element，一个存储Displayable');
   }
   
   // 获取一串需要被渲染的elements

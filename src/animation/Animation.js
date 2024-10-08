@@ -5,6 +5,8 @@ export function getTime() {
 }
 
 export default class Animation extends Eventful {
+  _head
+  _tail
 
   constructor(opts) {
     super();
@@ -22,7 +24,12 @@ export default class Animation extends Eventful {
   update(notTriggerFrameAndStageUpdate = undefined) {
     const time = getTime() - this._pausedTime;
     const delta = time - this._time;
-    // let clip = this.
+    let clip = this._head;
+    while (clip) {
+      const nextClip = clip.next;
+      let finished = clip.step(time, delta);
+      clip = nextClip;
+    }
 
     this._time = time;
 
@@ -62,5 +69,25 @@ export default class Animation extends Eventful {
     this._pausedTime = 0;
 
     this._startLoop();
+  }
+
+  // 停止动画
+  stop() {
+    this._running = false;
+  }
+  
+  addAnimator(animator) {
+    animator.animation = this;
+    // const clip = animator.getClip();
+    // if (clip) {
+    //   this.addClip(clip);
+    // }
+  }
+
+  addClip(clip) {
+    if (!this._head) {
+      this._head = this._tail = clip;
+    }
+    clip.animation = this;
   }
 }

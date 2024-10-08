@@ -1,6 +1,8 @@
 
 const protoKey = '__proto__';
 
+const objToString = Object.prototype.toString;
+
 let idStart =  0x0907;
 export function guid() {
   return idStart++;
@@ -89,4 +91,32 @@ export function disableUserSelect(dom) {
   domStyle.userSelect = 'none';
   domStyle.webkitTapHighlightColor = 'rgba(0,0,0,0)';
   domStyle['webkit-touch-callout'] = 'none';
+}
+
+export function isArrayLike(data) {
+  if (!data) {
+    return false;
+  }
+  if (typeof data === 'string') {
+    return false;
+  }
+  return typeof data.length === 'number';
+}
+
+export function isNumber(value) {
+  // 在chromium和webkit上的表现判断方法比objToString.call更快
+  // new Number()很少被使用
+  return typeof value === 'number';
+}
+
+// 是否是NaN
+export function eqNaN(value) {
+  return value !== value;
+}
+
+export function isArray(value) {
+  if (Array.isArray) {
+    return Array.isArray(value);
+  }
+  return objToString.call(value) === '[object Array]';
 }

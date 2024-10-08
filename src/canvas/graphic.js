@@ -1,6 +1,7 @@
 import PathProxy from '../core/PathProxy.js'
 import { SHAPE_CHANGED_BIT } from '../graphic/constants.js'
 import Path from '../graphic/Path.js';
+import { getLineDash } from '../canvas/dashStyle.js'
 
 const DRAW_TYPE_PATH = 1;
 const DRAW_TYPE_IMAGE = 2;
@@ -117,6 +118,15 @@ function bindPathAndTextCommonStyle(ctx, el, prevEl, forceSetAll, scope) {
   if (forceSetAll || style.opacity !== prevStyle.opacity) {
     ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
   }
+  if (el.hasStroke()) {
+    const lineWidth = style.lineWidth;
+    const newLineWidth = lineWidth / (
+        (style.strokeNoScale && el.getLineScale) ? el.getLineScale() : 1
+    );
+    if (ctx.lineWidth !== newLineWidth) {
+        ctx.lineWidth = newLineWidth;
+    }
+}
   for (let i = 0; i < STROKE_PROPS.length; i ++) {
     const prop = STROKE_PROPS[i];
     const propName = prop[0];
@@ -146,7 +156,7 @@ export function brush(ctx, el, scope, isLast) {
     setContextTransform(ctx, el);
   }
 
-  let canBatchPath = el && el.autoBatch && canPathBatch(el.style);
+  let canBatchPath = el instanceof Path && el.autoBatch && canPathBatch(el.style);
 
   const style = getStyle(el, scope.inHover);
   if (el instanceof Path) {
@@ -185,7 +195,7 @@ function brushPath(ctx, el, style, inBatch) {
   }
 
   const path = el.path || pathProxyForDraw;
-  const dirtyFlag = el._dirty;
+  const dirtyFlag = el.__dirty;
   if (!inBatch) {
     const fill = style.fill;
     const stroke = style.stroke;
@@ -211,6 +221,21 @@ function brushPath(ctx, el, style, inBatch) {
     el.pathUpdated();
   }
 
+  if (needsRebuild) {
+    path.rebuildPath(ctx, strokePart ? strokePercent : 1);
+  }
+
+  let lineDash;
+  let lineDashOffset;
+  if (ctx.setLineDash && style.lineDash) {
+    [lineDash, lineDashOffset] = getLineDash(el);
+  }
+  if (lineDash) {
+    ctx.setLineDash(lineDash);
+    ctx.lineDashOffset = lineDashOffset;
+  }
+
+  // stroke || fill 放最后一步 (ctx.stroke() || ctx.fill())
   if (!inBatch) {
     if (style.strokeFirst) {
 
@@ -219,5 +244,9 @@ function brushPath(ctx, el, style, inBatch) {
         doStrokePath(ctx, style);
       }
     }
+  }
+
+  if (lineDash) {
+    ctx.setLineDash([]);
   }
 }

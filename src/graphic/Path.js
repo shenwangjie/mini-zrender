@@ -55,8 +55,8 @@ class Path extends Displayable {
   }
 
   pathUpdated() {
-    this._dirty &= ~SHAPE_CHANGED_BIT;
-    // this._dirty = this._dirty & (~SHAPE_CHANGED_BIT);
+    this.__dirty &= ~SHAPE_CHANGED_BIT;
+    // this.__dirty = this.__dirty & (~SHAPE_CHANGED_BIT);  // 0111 & 1011 = 3
   }
 
   createPathProxy() {
@@ -75,6 +75,18 @@ class Path extends Displayable {
 
   update() {
     super.update();
+  }
+
+  updateDuringAnimation(targetKey) {
+    if (targetKey === 'style') {
+        this.dirtyStyle();
+    }
+    else if (targetKey === 'shape') {
+        this.dirtyShape();
+    }
+    else {
+        this.markRedraw();
+    }
   }
 }
 

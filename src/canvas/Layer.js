@@ -26,6 +26,25 @@ function createDom(id, painter, dpr) {
 }
 
 class Layer extends Eventful {
+  id
+  dom
+  painter
+  dpr = 1
+  __dirty = true
+
+  __startIndex = 0
+  __endIndex = 0
+
+  zlevel = 0
+
+  __builtin__
+
+  __used = false
+
+  virtual = false // 虚拟layer不会被塞进dom中
+
+  ctx
+
   constructor(id, painter, dpr = undefined) {
     super();
 

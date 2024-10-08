@@ -6,6 +6,8 @@
 
   const protoKey = '__proto__';
 
+  const objToString = Object.prototype.toString;
+
   let idStart =  0x0907;
   function guid() {
     return idStart++;
@@ -94,6 +96,34 @@
     domStyle.userSelect = 'none';
     domStyle.webkitTapHighlightColor = 'rgba(0,0,0,0)';
     domStyle['webkit-touch-callout'] = 'none';
+  }
+
+  function isArrayLike(data) {
+    if (!data) {
+      return false;
+    }
+    if (typeof data === 'string') {
+      return false;
+    }
+    return typeof data.length === 'number';
+  }
+
+  function isNumber(value) {
+    // 在chromium和webkit上的表现判断方法比objToString.call更快
+    // new Number()很少被使用
+    return typeof value === 'number';
+  }
+
+  // 是否是NaN
+  function eqNaN(value) {
+    return value !== value;
+  }
+
+  function isArray(value) {
+    if (Array.isArray) {
+      return Array.isArray(value);
+    }
+    return objToString.call(value) === '[object Array]';
   }
 
   // console.error('这里的declear const wx: 用的真是太好了')
@@ -224,6 +254,8 @@
   }
 
   class Animation extends Eventful {
+    _head
+    _tail
 
     constructor(opts) {
       super();
@@ -241,7 +273,12 @@
     update(notTriggerFrameAndStageUpdate = undefined) {
       const time = getTime() - this._pausedTime;
       const delta = time - this._time;
-      // let clip = this.
+      let clip = this._head;
+      while (clip) {
+        const nextClip = clip.next;
+        clip.step(time, delta);
+        clip = nextClip;
+      }
 
       this._time = time;
 
@@ -282,6 +319,25 @@
 
       this._startLoop();
     }
+
+    // 停止动画
+    stop() {
+      this._running = false;
+    }
+    addAnimator(animator) {
+      animator.animation = this;
+      animator.getClip();
+      // if (clip) {
+      //   this.addClip(clip);
+      // }
+    }
+
+    addClip(clip) {
+      if (!this._head) {
+        this._head = this._tail = clip;
+      }
+      clip.animation = this;
+    }
   }
 
   function sort(array, compare, lo, hi) {
@@ -300,11 +356,12 @@
   }
 
   class Storage {
-    
+    _roots = [] // 存储element
+    _displayList = [] // 存储element
+    _displayListLen = 0
+
     constructor() {
-      this._roots = [];
-      this._displayList = [];
-      this._displayListLen = 0;
+      console.error('_roots和_displayList区别，一个存储Element，一个存储Displayable');
     }
     
     // 获取一串需要被渲染的elements
@@ -355,6 +412,10 @@
   let instances = {};
 
   class ZRender {
+    animation
+
+    _sleepAfterStill = 10; // 默认10帧后停止动画
+    _stillFrameAccum = 0; // 一次动画后加1帧
 
     constructor(id, dom = null, opts = null) {
       this.id = id;
@@ -395,7 +456,7 @@
       this.painter.refresh();
       // Avoid trigger zr.refresh in Element#beforeUpdate hook
       this._needsRefresh = false;
-      console.error('不知道为啥再写一遍');
+      // console.error('不知道为啥再写一遍');
     }
     refreshHoverImmediately() {
       this._needsRefreshHover = false;
@@ -423,6 +484,12 @@
         this.trigger('rendered', {
           elapsedTime: end - start
         });
+      } else if (this._sleepAfterStill > 0){
+        this._stillFrameAccum++;
+        // 10帧后停止动画
+        if (this._stillFrameAccum > this._sleepAfterStill) {
+          this.animation.stop();
+        }
       }
     }
 
@@ -439,6 +506,12 @@
     refresh() {
       this._needsRefresh = true;
       this.animation.start();
+    }
+
+    wakeUp() {
+      this.animation.start();
+      // 重置帧
+      this._stillFrameAccum = 0;
     }
   }
 
@@ -476,7 +549,303 @@
     }
   }
 
+  class Clip {
+    _life
+    _delay
+    _startTime
+
+    loop
+
+    _pausedTime = 0
+
+    animation
+
+    onframe
+    ondestroy
+    onrestart
+
+    easingFunc
+
+    // 只读
+    next
+    prev
+
+    _inited = false
+
+    constructor(opts) {
+      this._life = opts.life || 1000;
+      this._delay = opts.delay || 0;
+      this.loop = opts.loop || false;
+      this.onframe = opts.onframe || function(){};
+      this.ondestroy = opts.ondestroy || function(){};
+      this.onrestart = opts.onrestart || function(){};
+    }
+
+    step(globalTime, deltaTime) {
+      if (!this._inited) {
+        this._startTime = globalTime + this._delay;
+        this._inited = true;
+      }
+
+      let elapsedTime = globalTime - this._startTime - this._pausedTime;
+      let percent = elapsedTime / this._life;
+      if (percent < 0) {
+        percent = 0;
+      }
+      percent = Math.min(percent, 1);
+      const easingFunc = this.easingFunc;
+      const schedule = easingFunc ? easingFunc(percent) : percent;
+
+      this.onframe(schedule);
+
+      if (percent == 1) {
+        if (this.loop) {
+          const remainder = elapsedTime % this._life;
+          this._startTime = globalTime - remainder;
+          this._pausedTime = 0;
+
+          this.onrestart();
+        } else {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  function cloneValue(value) {
+    if (isArrayLike(value)) ;
+    return value;
+  }
+
+  const VALUE_TYPE_NUMBER = 0;
+  const VALUE_TYPE_UNKOWN = 6;
+
+  function interpolateNumber(p0, p1, percent) {
+    return (p1 - p0) * percent + p0;
+  }
+
+  class Animator {
+    animation
+
+    _tracks = {}
+    _trackKeys = []
+
+    targetName
+
+    _onframeCbs
+    _doneCbs
+
+    _clip = null
+
+    _loop
+    _delay
+    _maxTime = 0
+
+    // 0: Not started
+    // 1: Invoked started
+    // 2: 已经至少跑了1帧
+    _started = 0
+    
+    constructor(target, loop) {
+      this._target = target;
+      this._loop = loop;
+    }
+
+    // 添加动画每一帧的回调函数
+    during(cb) {
+      if (cb) {
+        if (!this._onframeCbs) {
+          this._onframeCbs = [];
+        }
+        this._onframeCbs.push(cb);
+      }
+      return this;
+    }
+
+    // 添加完成动画的回调函数
+    done(cb) {
+      if (cb) {
+        if (!this._doneCbs) {
+          this._doneCbs = [];
+        }
+        this._doneCbs.push(cb);
+      }
+      return this;
+    }
+
+    getClip() {
+      return this._clip;
+    }
+
+    // 设置动画帧
+    when(time, props, easing) {
+      return this.whenWithKeys(time, props, keys(props), easing);
+    }
+
+    whenWithKeys(time, props, propNames, easing) {
+      const tracks = this._tracks;
+      for (let i = 0; i < propNames.length; i++) {
+        const propName = propNames[i];
+        let track = tracks[propName];
+        if (!track) {
+          track = tracks[propName] = new Track(propName);
+
+          let initialValue = this._target[propName];
+          if (initialValue == null) {
+            console.error('非法属性：' + propName);
+            continue;
+          }
+
+          if (time > 0) {
+            track.addKeyFrame(0, cloneValue(initialValue), easing);
+          }
+
+          this._trackKeys.push(propName);
+        }
+        track.addKeyFrame(time, cloneValue(props[propName]), easing);
+      }
+      this._maxTime = Math.max(this._maxTime, time);
+      return this;
+    }
+
+    // 开始动画
+    start(easing) {
+      if (this._started > 0) {
+        return
+      }
+      this._started = 1;
+
+      const self = this;
+
+      const tracks = [];
+      const maxTime = this._maxTime || 0;
+      for (let i = 0; i < this._trackKeys.length; i++) {
+        const propName = this._trackKeys[i];
+        const track = this._tracks[propName];
+        track.prepare(maxTime, undefined);
+        if (track.needsAnimate()) {
+          tracks.push(track);
+        }
+      }
+
+      if (tracks.length) {
+        const clip = new Clip({
+          life: maxTime,
+          loop: this._loop,
+          delay: this._delay || 0,
+          onframe(percent) {
+            self._started = 2;
+
+            for (let i = 0; i < tracks.length; i++) {
+              tracks[i].step(self._target, percent);
+            }
+
+            const onframeList = self._onframeCbs;
+            if (onframeList) {
+              for (let i = 0; i < onframeList.length; i++) {
+                onframeList[i](self._target, percent);
+              }
+            }
+          },
+          ondestroy() {}
+        });
+        this._clip = clip;
+
+        if (this.animation) {
+          this.animation.addClip(clip);
+        }
+      }
+      return this;
+    }
+  }
+
+  class Track {
+    keyframes = []
+    propName
+    valType
+    discrete = false
+
+    _lastFrame = 0
+
+    _additiveTrack
+
+    constructor(propName) {
+      this.propName = propName;
+    }
+
+    addKeyFrame(time, rawValue, easing) {
+      let valType = VALUE_TYPE_UNKOWN;
+
+      let keyframes = this.keyframes;
+      let len = keyframes.length;
+
+      let discrete = false;
+      let value = rawValue;
+
+      if (isNumber(rawValue) && !eqNaN(rawValue)) {
+        valType = VALUE_TYPE_NUMBER;
+      }
+
+      if (len === 0) {
+        this.valType = valType;
+      }
+
+      this.discrete = this.discrete || discrete;
+
+      const kf = {
+        time,
+        value,
+        rawValue,
+        percent: 0
+      };
+      keyframes.push(kf);
+      return kf;
+    }
+
+    prepare(maxTime, additiveTrack) {
+      let kfs = this.keyframes;
+      kfs.length;
+    }
+
+    needsAnimate() {
+      return this.keyframes.length >= 1;
+    }
+
+    step(target, percent) {
+      const keyframes = this.keyframes;
+      const kfsNum = keyframes.length;
+
+      let frameIdx;
+      const lastFrame = this._lastFrame;
+      const mathMin = Math.min;
+      let frame, nextFrame;
+      if (kfsNum === 1) ; else {
+        for (frameIdx = lastFrame; frameIdx < kfsNum; frameIdx++) {
+          if (keyframes[frameIdx].percent > percent) {
+            break;
+          }
+        }
+        frameIdx = mathMin(frameIdx - 1, kfsNum - 2);
+
+        nextFrame = keyframes[frameIdx + 1];
+        frame = keyframes[frameIdx];
+      }
+
+      const isAdditive = this._additiveTrack != null;
+      const valueKey = isAdditive ? 'additiveValue' : 'value';
+      const propName = this.propName;
+
+      const interval = nextFrame.percent - frame.percent;
+      let w = interval === 0 ? 1 : mathMin((percent - frame.percent) / interval, 1);
+      const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
+      target[propName] = value;
+    }
+  }
+
   class Element {
+    animators = []
+
     constructor(props = null) {
       this._init(props);
     }
@@ -506,7 +875,7 @@
       this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
       const zr = this.__zr;
       if (zr) {
-        console.info('next...');
+        zr.refresh();
       }
     }
 
@@ -516,6 +885,34 @@
 
     addSelfToZr(zr) {
       this.__zr = zr;
+    }
+
+    animate(key, loop) {
+      let target = key ? this[key] : this;
+
+      const animator = new Animator(target, loop);
+      key && (animator.targetName = key);
+      this.addAnimator(animator, key);
+      return animator;
+    }
+
+    addAnimator(animator, key) {
+      const zr = this.__zr;
+      const el = this;
+
+      animator.during(function () {
+        el.updateDuringAnimation(key);
+      }).done(function () {
+
+      });
+
+      this.animators.push(animator);
+
+      if (zr) {
+        zr.animation.addAnimator(animator);
+      }
+      // 唤醒zrender去循环动画
+      zr && zr.wakeUp();
     }
 
     static initDefaultProps = (function () {
@@ -640,7 +1037,19 @@
     R: 7
   };
 
+  const mathAbs = Math.abs;
+
   class PathProxy {
+    _len = 0
+
+    // Unit x, Unit y 阻止绘制过短的线段
+    // 不用private的话会显示undefine，就会出现问题
+    // _ux
+    // _uy
+
+    _xi = 0
+    _yi = 0
+
     constructor(notSaveData) {
       if (notSaveData) {
         this._saveData = false;
@@ -710,6 +1119,24 @@
       return this;
     }
 
+    lineTo(x, y) {
+      const dx = mathAbs(x - this._xi);
+      const dy = mathAbs(y - this._yi);
+      const exceedUnit = dx > this._ux || dy > this._uy;
+
+      this.addData(CMD.L, x, y);
+
+      if (this._ctx && exceedUnit) {
+        this._ctx.lineTo(x, y);
+      }
+      if (exceedUnit) {
+        this._xi = x;
+        this._yi = y;
+      } 
+
+      return this;
+    }
+
     bezierCurveTo(x1, y1, x2, y2, x3, y3) {
       this.addData(CMD.C, x1, y1, x2, y2, x3, y3);
       if (this._ctx) {
@@ -720,9 +1147,49 @@
       return this;
     }
 
+    rebuildPath(ctx, percent) {
+      const data = this.data;
+      const len = this._len;
+      const ux = this._ux;
+      const uy = this._uy;
+      let xi, yi;
+      let x, y;
+      for (let i = 0; i < len;) {
+        const cmd = data[i++];
+        const isFirst = i === 1;
+
+        if (isFirst) {
+          xi = data[i];
+          yi = data[i + 1];
+        }
+
+        switch(cmd) {
+          case CMD.M: 
+              xi = data[i++];
+              yi = data[i++];
+              ctx.moveTo(xi, yi);
+              break;
+          case CMD.L:
+              x = data[i++];
+              y = data[i++];
+              const dx = mathAbs(x - xi);
+              const dy = mathAbs(y - yi);
+              if (dx > ux || dy > uy) {
+                ctx.lineTo(x, y);
+                xi = x;
+                yi = y;
+              }
+              break;
+        }
+      }
+    }
+
     static initDefaultProps = (function () {
       const proto = PathProxy.prototype;
       proto._saveData = true;
+      proto._ux = 0;
+      proto._uy = 0;
+      proto._version = 0;
     })()
   }
 
@@ -778,8 +1245,8 @@
     }
 
     pathUpdated() {
-      this._dirty &= ~SHAPE_CHANGED_BIT;
-      // this._dirty = this._dirty & (~SHAPE_CHANGED_BIT);
+      this.__dirty &= ~SHAPE_CHANGED_BIT;
+      // this.__dirty = this.__dirty & (~SHAPE_CHANGED_BIT);  // 0111 & 1011 = 3
     }
 
     createPathProxy() {
@@ -798,6 +1265,18 @@
 
     update() {
       super.update();
+    }
+
+    updateDuringAnimation(targetKey) {
+      if (targetKey === 'style') {
+          this.dirtyStyle();
+      }
+      else if (targetKey === 'shape') {
+          this.dirtyShape();
+      }
+      else {
+          this.markRedraw();
+      }
     }
   }
 
@@ -855,6 +1334,51 @@
     
   }
 
+  function buildPath(ctx, shape, closePath) {
+    const smooth = shape.smooth;
+    let points = shape.points;
+    if (points && points.length >= 2) {
+      if (smooth) ; else {
+        ctx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1, l = points.length; i < l; i++) {
+          ctx.lineTo(points[i][0], points[i][1]);
+        }
+      }
+    
+      closePath && ctx.closePath();
+    } 
+  }
+
+  /**
+   * 折线
+   */
+
+  class PolylineShape {
+    points = null 
+    smooth = 0 // 折线图会变成平滑的贝塞尔曲线
+  }
+
+  class Polyline extends Path {
+    constructor(opts) {
+      super(opts);
+    }
+
+    buildPath(ctx, shape) {
+      buildPath(ctx, shape, false);
+    }
+
+    getDefaultShape() {
+      return new PolylineShape();
+    }
+
+    getDefaultStyle() {
+      return {
+        stroke: '#000',
+        fill: null
+      }
+    }
+  }
+
   function parseInt10(val) {
     return parseInt(val, 10);
   }
@@ -895,7 +1419,7 @@
       return typeof document !== 'undefined' 
       && document.createElement('canvas');
     },
-    
+
     measureText: (function() {
       return (text, font = undefined) => {
         
@@ -926,6 +1450,25 @@
   }
 
   class Layer extends Eventful {
+    id
+    dom
+    painter
+    dpr = 1
+    __dirty = true
+
+    __startIndex = 0
+    __endIndex = 0
+
+    zlevel = 0
+
+    __builtin__
+
+    __used = false
+
+    virtual = false // 虚拟layer不会被塞进dom中
+
+    ctx
+
     constructor(id, painter, dpr = undefined) {
       super();
 
@@ -973,6 +1516,27 @@
       this.__prevStartIndex = this.__startIndex;
       this.__prevEndIndex = this.__endIndex;
     }
+  }
+
+  function normallizeLineDash(lineType, lineWidth) {
+    if (!lineType || lineType === 'solid' || !(lineWidth > 0)) {
+      return null;
+    }
+    return lineType === 'dashed'
+          ? [4 * lineWidth, 2 * lineWidth]
+          : lineType === 'dotted'
+                  ? [lineWidth]
+                  : isNumber(lineType)
+                        ? [lineType] : isArray(lineType) ? lineType : null;
+  }
+
+  function getLineDash(el) {
+    const style = el.style;
+
+    let lineDash = style.lineDash && style.lineWidth > 0 && normallizeLineDash(style.lineDash, style.lineWidth);
+    let lineDashOffset = style.lineDashOffset;
+
+    return [lineDash, lineDashOffset];
   }
 
   const DRAW_TYPE_PATH = 1;
@@ -1085,6 +1649,15 @@
     if (forceSetAll || style.opacity !== prevStyle.opacity) {
       ctx.globalAlpha = style.opacity == null ? 1 : style.opacity;
     }
+    if (el.hasStroke()) {
+      const lineWidth = style.lineWidth;
+      const newLineWidth = lineWidth / (
+          (style.strokeNoScale && el.getLineScale) ? el.getLineScale() : 1
+      );
+      if (ctx.lineWidth !== newLineWidth) {
+          ctx.lineWidth = newLineWidth;
+      }
+  }
     for (let i = 0; i < STROKE_PROPS.length; i ++) {
       const prop = STROKE_PROPS[i];
       const propName = prop[0];
@@ -1114,7 +1687,7 @@
       setContextTransform(ctx, el);
     }
 
-    let canBatchPath = el && el.autoBatch && canPathBatch(el.style);
+    let canBatchPath = el instanceof Path && el.autoBatch && canPathBatch(el.style);
 
     const style = getStyle(el, scope.inHover);
     if (el instanceof Path) {
@@ -1153,7 +1726,7 @@
     }
 
     const path = el.path || pathProxyForDraw;
-    const dirtyFlag = el._dirty;
+    const dirtyFlag = el.__dirty;
     if (!inBatch) {
       style.fill;
       style.stroke;
@@ -1161,10 +1734,13 @@
 
     const scale = el.getGlobalScale();
     path.setScale(scale[0], scale[1], el.segmentIgnoreThreshold);
+
+    let needsRebuild = true;
     if (firstDraw || (dirtyFlag & SHAPE_CHANGED_BIT)) {
       path.setDPR(ctx.dpr);
       if (strokePart) ; else {
         path.setContext(ctx);
+        needsRebuild = false;
       }
       path.reset();
 
@@ -1174,12 +1750,31 @@
       el.pathUpdated();
     }
 
+    if (needsRebuild) {
+      path.rebuildPath(ctx, strokePart ? strokePercent : 1);
+    }
+
+    let lineDash;
+    let lineDashOffset;
+    if (ctx.setLineDash && style.lineDash) {
+      [lineDash, lineDashOffset] = getLineDash(el);
+    }
+    if (lineDash) {
+      ctx.setLineDash(lineDash);
+      ctx.lineDashOffset = lineDashOffset;
+    }
+
+    // stroke || fill 放最后一步 (ctx.stroke() || ctx.fill())
     if (!inBatch) {
       if (style.strokeFirst) ; else {
         if (hasStroke) {
           doStrokePath(ctx);
         }
       }
+    }
+
+    if (lineDash) {
+      ctx.setLineDash([]);
     }
   }
 
@@ -1434,7 +2029,7 @@
           ctx.restore();
         }
 
-        layer.__drawIndex = i;
+        // layer.__drawIndex = i;
       }
 
       return {
@@ -1472,6 +2067,8 @@
 
   exports.BezierCurve = BezierCurve;
   exports.BezierCurveShape = BezierCurveShape;
+  exports.Polyline = Polyline;
+  exports.PolylineShape = PolylineShape;
   exports.init = init;
   exports.registerPainter = registerPainter;
 

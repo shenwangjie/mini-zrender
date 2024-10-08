@@ -10,6 +10,10 @@ const painterCtors = {};
 let instances = {};
 
 class ZRender {
+  animation
+
+  _sleepAfterStill = 10; // 默认10帧后停止动画
+  _stillFrameAccum = 0; // 一次动画后加1帧
 
   constructor(id, dom = null, opts = null) {
     this.id = id;
@@ -50,7 +54,7 @@ class ZRender {
     this.painter.refresh();
     // Avoid trigger zr.refresh in Element#beforeUpdate hook
     this._needsRefresh = false;
-    console.error('不知道为啥再写一遍');
+    // console.error('不知道为啥再写一遍');
   }
   refreshHoverImmediately() {
     this._needsRefreshHover = false;
@@ -78,6 +82,12 @@ class ZRender {
       this.trigger('rendered', {
         elapsedTime: end - start
       })
+    } else if (this._sleepAfterStill > 0){
+      this._stillFrameAccum++;
+      // 10帧后停止动画
+      if (this._stillFrameAccum > this._sleepAfterStill) {
+        this.animation.stop();
+      }
     }
   }
 
@@ -94,6 +104,12 @@ class ZRender {
   refresh() {
     this._needsRefresh = true;
     this.animation.start();
+  }
+
+  wakeUp() {
+    this.animation.start();
+    // 重置帧
+    this._stillFrameAccum = 0;
   }
 }
 

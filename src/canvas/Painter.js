@@ -274,7 +274,7 @@ export default class CanvasPainter {
         ctx.restore();
       }
 
-      layer.__drawIndex = i;
+      // layer.__drawIndex = i;
     }
 
     return {
