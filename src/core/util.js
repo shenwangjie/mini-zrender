@@ -3,6 +3,11 @@ const protoKey = '__proto__';
 
 const objToString = Object.prototype.toString;
 
+const arrayProto = Array.prototype;
+const nativeForEach = arrayProto.forEach;
+const nativeSlice = arrayProto.slice;
+const nativeMap = arrayProto.map;
+
 let idStart =  0x0907;
 export function guid() {
   return idStart++;
@@ -119,4 +124,53 @@ export function isArray(value) {
     return Array.isArray(value);
   }
   return objToString.call(value) === '[object Array]';
+}
+
+export function isObject(value) {
+  const type = typeof value;
+  return type === 'function' || (!!value && type === 'object');
+}
+
+// 数组或对象遍历
+export function each(arr, cb, context) {
+  if (!(arr && cb)) {
+    return;
+  }
+  if (arr.forEach && arr.forEach === nativeForEach) {
+    arr.forEach(cb, context);
+  } else if (arr.length === +arr.length) {
+    // 转化为数字 +
+    for (let i = 0, len = arr.length; i < len; i++) {
+      cb.call(context, arr[i], i, arr);
+    }
+  } else {
+    for (let key in arr) {
+      if (arr.hasOwnProperty(key)) {
+        cb.call(context, arr[key], key, arr)
+      }
+    }
+  }
+}
+
+export function slice(arr, ...args) {
+  return nativeSlice.apply(arr, args);
+  // return nativeSlice.call(arr, args[0], args[1], args[2]...);
+}
+
+export function map(arr, cb, context) {
+  if (!arr) {
+    return [];
+  }
+  if (!cb) {
+    return slice(arr);
+  }
+  if (arr.map && arr.map === nativeMap) {
+    return arr.map(cb, context);
+  } else {
+    const result = [];
+    for (let i = 0, len = arr.length; i < len; i++) {
+      result.push(cb.call(context, arr[i], i, arr));
+    }
+    return result;
+  }
 }

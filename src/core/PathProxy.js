@@ -11,6 +11,10 @@ const CMD = {
 const mathAbs = Math.abs;
 const mathMin = Math.min;
 const mathMax = Math.max;
+const mathCos = Math.cos;
+const mathSin = Math.sin;
+
+const tmpAngles = [];
 
 export default class PathProxy {
   _len = 0
@@ -108,6 +112,28 @@ export default class PathProxy {
       this._yi = y;
     } 
 
+    return this;
+  }
+
+  arc(cx, cy, r, startAngle, endAngle, anticlockwise) {
+    this._drawPendingPt();
+
+    tmpAngles[0] = startAngle;
+    tmpAngles[1] = endAngle;
+
+    startAngle = tmpAngles[0];
+    endAngle = tmpAngles[1];
+
+    let delta = endAngle - startAngle;
+
+    this.addData(
+      CMD.A, cx, cy, r, r, startAngle, delta, 0, anticlockwise ? 0 : 1
+    );
+
+    this._ctx && this._ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
+
+    this._xi = mathCos(endAngle) * r + cx;
+    this._yi = mathSin(endAngle) * r + cy;
     return this;
   }
 

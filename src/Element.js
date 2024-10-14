@@ -1,12 +1,37 @@
 import { REDRAW_BIT } from './graphic/constants'
 import Transformable from './core/Transformable'
-import { mixin } from './core/util'
+import { mixin, isObject, keys, guid } from './core/util'
 import Animator from './animation/Animator'
+import Eventful from './core/Eventful'
 class Element {
+  id = guid()
+
   animators = []
+
+  // parent
 
   constructor(props = null) {
     this._init(props)
+  }
+
+  _init(props) {
+    // Init default properties
+    this.attr(props);
+  }
+
+  attr(keyOrObj, value) {
+    if (typeof keyOrObj === 'string') {
+      this.attrKV(keyOrObj, value)
+    } else if (isObject(keyOrObj)) {
+      let obj = keyOrObj;
+      let keysArr = keys(obj);
+      for (let i = 0; i < keysArr.length; i++) {
+        let key = keysArr[i];
+        this.attrKV(key, keyOrObj[key]);
+      }
+    }
+    this.markRedraw();
+    return this;
   }
 
   attrKV(key, value) {
@@ -131,6 +156,7 @@ class Element {
   })()
 }
 
+mixin(Element, Eventful);
 mixin(Element, Transformable);
 
 export default Element;

@@ -20,6 +20,10 @@ export const DEFAULT_PATH_STYLE = defaults({
 }, DEFAULT_COMMON_STYLE)
 
 class Path extends Displayable {
+  // 目前来看在constructor中不使用就不要定义它，不然外部拿到对象的属性就是undefined
+  // style
+  // shape
+
   constructor(opts = null) {
     super(opts);
   }
@@ -52,6 +56,10 @@ class Path extends Displayable {
     if (!this.style) {
       this.useStyle({})
     }
+  }
+
+  getDefaultStyle() {
+    return null;
   }
 
   pathUpdated() {

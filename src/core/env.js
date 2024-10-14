@@ -38,7 +38,7 @@ if (typeof wx === 'object' && typeof wx.getSystemInfoSync === 'function') {
 } else if (typeof document === 'undefined' && typeof self != 'undefined') {
   env.worker = true
   console.error('什么是in worker')
-} else if (env.hasGlobalWindow || 'Deno' in window) {
+} else if (!env.hasGlobalWindow || 'Deno' in window) {
   // 在node环境中
   env.node = true;
   env.svgSupported = true;

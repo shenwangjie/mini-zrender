@@ -8,6 +8,11 @@
 
   const objToString = Object.prototype.toString;
 
+  const arrayProto = Array.prototype;
+  const nativeForEach = arrayProto.forEach;
+  const nativeSlice = arrayProto.slice;
+  const nativeMap = arrayProto.map;
+
   let idStart =  0x0907;
   function guid() {
     return idStart++;
@@ -126,6 +131,55 @@
     return objToString.call(value) === '[object Array]';
   }
 
+  function isObject(value) {
+    const type = typeof value;
+    return type === 'function' || (!!value && type === 'object');
+  }
+
+  // 数组或对象遍历
+  function each(arr, cb, context) {
+    if (!(arr && cb)) {
+      return;
+    }
+    if (arr.forEach && arr.forEach === nativeForEach) {
+      arr.forEach(cb, context);
+    } else if (arr.length === +arr.length) {
+      // 转化为数字 +
+      for (let i = 0, len = arr.length; i < len; i++) {
+        cb.call(context, arr[i], i, arr);
+      }
+    } else {
+      for (let key in arr) {
+        if (arr.hasOwnProperty(key)) {
+          cb.call(context, arr[key], key, arr);
+        }
+      }
+    }
+  }
+
+  function slice(arr, ...args) {
+    return nativeSlice.apply(arr, args);
+    // return nativeSlice.call(arr, args[0], args[1], args[2]...);
+  }
+
+  function map(arr, cb, context) {
+    if (!arr) {
+      return [];
+    }
+    if (!cb) {
+      return slice(arr);
+    }
+    if (arr.map && arr.map === nativeMap) {
+      return arr.map(cb, context);
+    } else {
+      const result = [];
+      for (let i = 0, len = arr.length; i < len; i++) {
+        result.push(cb.call(context, arr[i], i, arr));
+      }
+      return result;
+    }
+  }
+
   // console.error('这里的declear const wx: 用的真是太好了')
 
   class Browser {
@@ -165,7 +219,7 @@
   } else if (typeof document === 'undefined' && typeof self != 'undefined') {
     env.worker = true;
     console.error('什么是in worker');
-  } else if (env.hasGlobalWindow || 'Deno' in window) {
+  } else if (!env.hasGlobalWindow || 'Deno' in window) {
     // 在node环境中
     env.node = true;
     env.svgSupported = true;
@@ -207,27 +261,333 @@
   }
 
   class Eventful {
+    _$handlers
+    _$eventProcessor
+
     constructor() {
       this._$handlers = null;
+    }
+
+    on(event, query, handler, context) {
+      // click (func click) Handler undefined
+      if (!this._$handlers) {
+        this._$handlers = {};
+      }
+
+      const _h = this._$handlers;
+
+      if (typeof query === 'function') {
+        context = handler;
+        handler = query;
+        query = null;
+      }
+
+      this._$eventProcessor;
+      if (!_h[event]) {
+        _h[event] = [];
+      }
+
+      const wrap = {
+        h: handler,
+        query,
+        ctx: (context || this),
+        callAtLast: handler.zrEventfulCallAtLast
+      };
+
+      const lastIndex = _h[event].length - 1;
+      const lastWrap = _h[event][lastIndex];
+      (lastWrap && lastWrap.callAtLast) 
+        ? _h[event].splice(lastIndex, 0, wrap)
+        : _h[event].push(wrap);
+
+      return this;
     }
 
     trigger(eventType, ...args) {
       if (!this._$handlers) {
         return this;
       }
+
+      const _h = this._$handlers[eventType];
+      if (_h) {
+        const argLen = args.length;
+
+        const len = _h.length;
+        for (let i = 0; i < len; i ++) {
+          const hItem = _h[i];
+          switch (argLen) {
+            case 0: 
+              hItem.h.call(hItem.ctx);
+              break;
+            case 1:
+              hItem.h.call(hItem.ctx, args[0]);
+              break;
+            case 2:
+              hItem.h.call(hItem.ctx, args[0], args[1]);
+              break;
+            default: 
+              hItem.h.apply(hItem.ctx, args);
+              break;
+          }
+        }
+      }
       
       return this;
     }
   }
 
+  const firefoxNotSupportOffsetXY = env.browser.firefox
+      // FireFox >=39 才可以使用 offsetX/offsetY
+      && +(env.browser.version).split('.')[0] < 39;
+
+  function getNativeEvent(e) {
+    return e || window.event; // For IE
+  }
+
+  function clientToLocal(el, e, out, calculate) {
+    out = out || {};
+
+    if (firefoxNotSupportOffsetXY && e.layerX != null && e.layerY && e.layerX !== e.offsetX) {
+      out.zrX = e.layerX;
+      out.zrY = e.layerY;
+    } else if (e.offsetX != null) {
+      // For IE6+, chrome, safari, opera, firefox >= 39
+      out.zrX = e.offsetX;
+      out.zrY = e.offsetY;
+    } else {
+      // 其他设备，如iOS safari
+      calculateZrXY();
+    }
+
+    return out;
+  }
+
+  function calculateZrXY(el, e, out) {
+    console.log('其他设备');
+  }
+
+  function getWheelDeltaMayPolyfill(e) {
+    const rawWheelDelta = e.wheelDelta;
+    if (rawWheelDelta) {
+      return rawWheelDelta;
+    }
+
+    const deltaX = e.deltaX;
+    const deltaY = e.deltaY;
+    if (deltaX == null || deltaY == null) {
+      return rawWheelDelta;
+    }
+  }
+
+  function normalizeEvent(el, e, calculate) {
+    e = getNativeEvent(e);
+
+    if (e.zrX != null) {
+      return e;
+    }
+
+    const eventType = e.type;
+    const isTouch = eventType && eventType.indexOf('touch') >= 0;
+
+    if (!isTouch) {
+      clientToLocal(el, e, e);
+      const wheelDelta = getWheelDeltaMayPolyfill(e);
+      e.zrDelta = wheelDelta ? wheelDelta / 120 : -(e.detail || 0) / 3;
+      // zrX/zrY/zrDelta
+    }
+
+    // const button = e.button;
+
+    return e;
+  }
+
+  const localNativeListenerNames = (function() {
+    const mouseHandlerNames = [
+      'click', 'dblclick', 'mousewheel', 'wheel', 'mouseout',
+      'mouseup', 'mousedown', 'mousemove', 'contextmenu'
+    ];
+    const touchHandlerNames = [
+      'touchstart', 'touchend', 'touchmove'
+    ];
+    const pointerEventNameMap = {
+      pointerdown: 1, pointerup: 1, pointermove: 1, pointerout: 1
+    };
+    const pointerHandlerNames = map(mouseHandlerNames, function(name) {
+      const nm = name.replace('mouse', 'pointer');
+      return pointerEventNameMap.hasOwnProperty(nm) ? nm : name;
+    });
+
+    return {
+      mouse: mouseHandlerNames,
+      touch: touchHandlerNames,
+      pointer: pointerHandlerNames
+    }
+  })();
+
+  const localDOMHandlers = {
+    mousedown(event) {
+      event = normalizeEvent(this.dom, event);
+
+      this.__mayPointerCapture = [event.zrX, event.zrY];
+
+      this.trigger('mousedown', event);
+    },
+
+    mousemove(event) {
+      event = normalizeEvent(this.dom, event);
+
+      this.__mayPointerCapture;
+
+      this.trigger('mousemove', event);
+    },
+
+    mouseup(event) {
+
+    },
+
+    mouseout(event) {
+
+    },
+
+    wheel(event) {
+
+    },
+
+    mousewheel(event) {
+
+    },
+
+    touchstart(event) {
+
+    },
+
+    touchmove(event) {
+
+    },
+
+    touchend(event) {
+
+    },
+
+    pointerdown(event) {
+
+    },
+
+    pointermove(event) {
+
+    },
+
+    pointerup(event) {
+
+    },
+
+    pointerout(event) {
+
+    },
+  };
+
+  each(['click', 'dbclick', 'contextmenu'], function(name) {
+    localDOMHandlers[name] = function(event) {
+      event = normalizeEvent(this.dom, event);
+      this.trigger(name, event);
+    };
+  });
+
+  const globalDOMHandlers = {
+
+  };
+
+  function mountLocalDOMEventListeners(instance, scope) {
+    const domHandlers = scope.domHandlers;
+
+    if (env.pointerEventSupported) ; else {
+      each(localNativeListenerNames.mouse, function(nativeEventName) { // forEach
+        mountSingleDOMEventListener(scope, nativeEventName, function(event) { // addEventListener
+          event = getNativeEvent(event);
+          if (!scope.touching) { // 防止鼠标和触摸事件同时触发
+            domHandlers[nativeEventName].call(instance, event);
+          }
+        });
+      });
+    }
+  }
+
+  function mountSingleDOMEventListener(scope, nativeEventName, listener, opt) {
+    scope.mounted[nativeEventName] = listener;
+    scope.listenerOpts[nativeEventName] = opt;
+    scope.domTarget.addEventListener(nativeEventName, listener, opt);
+  }
+
+  class DOMHandlerScope {
+    domTarget
+    domHandlers
+    mounted = {}
+    listenerOpts = {}
+    touching = false
+
+    constructor(domTarget, domHandlers) {
+      this.domTarget = domTarget;
+      this.domHandlers = domHandlers;
+    }
+  }
   class HandlerDomProxy extends Eventful {
+    dom
+
+    handler 
+
+    _localHandlerScope
+    _globalHandlerScope = new DOMHandlerScope(document, )
+    // [x, y]
+    __mayPointerCapture
+
     constructor(dom, painterRoot) {
       super();
       this.dom = dom;
       this.painterRoot = painterRoot;
+
+      if (env.domSupported) {
+        this._globalHandlerScope = new DOMHandlerScope(document, globalDOMHandlers);
+      }
+
+      this._localHandlerScope = new DOMHandlerScope(dom, localDOMHandlers);
+      mountLocalDOMEventListeners(this, this._localHandlerScope);
     }
   }
 
+  const handlerNames = [
+    'click', 'dbclick', 'mousewheel', 'mouseout',
+    'mouseup', 'mousedown', 'mousemove', 'contextmenu'
+  ];
+
+  function makeEventPacket(eventName, targetInfo, event) {
+    return {
+      type: eventName,
+      event: event,
+      target: targetInfo.target,
+      topTarget: targetInfo.topTarget,
+      cancelBubble: false,
+      offsetX: event.zrX,
+      offsetY: event.zrY,
+      gestureEvent: event.gestureEvent,
+      pinchX: event.pinchX,
+      pinchY: event.pinchY,
+      pinchScale: event.pinchScale,
+      wheelDelta: event.zrDelta
+    }
+  }
+  class HoveredResult {
+    x
+    y
+    target
+    
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+    }
+  }
+  class EmptyProxy extends Eventful {
+    handler = null
+  }
   class Handler extends Eventful {
     constructor(
       storage,
@@ -241,12 +601,101 @@
       this.painter = painter;
       this.painterRoot = painterRoot;
       this._pointerSize = pointerSize;
+      proxy = proxy || new EmptyProxy();
       /**
       * Proxy of event. can be Dom, WebGLSurface, etc.
       */
       this.proxy = null;
       console.error('不是很理解');
+
+      this.setHandlerProxy(proxy);
+
+      // this._draggingMgr = new Draggable(this);
     }
+
+    setHandlerProxy(proxy) {
+      if (proxy) {
+        each(handlerNames, function(name) {
+          proxy.on && proxy.on(name, this[name], this);
+        }, this);
+        proxy.handler = this;
+      }
+      this.proxy = proxy;
+    }
+
+    mousemove(event) {
+
+    }
+
+    mouseout(event) {
+
+    }
+
+    findHover(x, y, exclude) {
+      const list = this.storage.getDisplayList();
+      const out = new HoveredResult(x, y);
+      setHoverTarget(list, out, x, y, exclude);
+
+      return out;
+    }
+
+    // 事件分发代理
+    dispatchToElement(targetInfo, eventName, event) {
+      targetInfo = targetInfo || {};
+
+      let el = targetInfo.target;
+
+      const eventKey = ('on' + eventName);
+      const eventPacket = makeEventPacket(eventName, targetInfo, event);
+
+      while(el) {
+        el[eventKey] && (eventPacket.cancelBubble = !!el[eventKey].call(el, eventPacket));
+
+        el.trigger(eventName, eventPacket);
+
+        el = el.__hostTarget ? el.__hostTarget : el.parent;
+
+        if (eventPacket.cancelBubble) {
+          break;
+        }
+      }
+
+      if (!eventPacket.cancelBubble) {
+        this.trigger(eventName, eventPacket);
+      }
+    }
+  }
+
+  each(['click', 'mousedown', 'mouseup', 'mousewheel', 'dbclick', 'contextmenu'], function(name) {
+    Handler.prototype[name] = function (event) { // trigger回调
+      const x = event.zrX;
+      const y = event.zrY;
+      const isOutside = isOutsideBoundary(this, x, y);
+
+      let hovered;
+
+      if (name !== 'mouseup' || !isOutside) {
+        hovered = this.findHover(x, y);
+        hovered.target;
+      }
+      this.dispatchToElement(hovered, name, event);
+    };
+  });
+
+  function setHoverTarget(list, out, x, y, exclude) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const el = list[i];
+      if (el !== exclude && !el.ignore) {
+        !out.topTarget && (out.topTarget = el);
+        out.target = el;
+        break;
+      }
+    }
+  }
+
+  function isOutsideBoundary(handlerInstance, x, y) {
+    const painter = handlerInstance.painter;
+    return x < 0 || x > painter.getWidth() || y < 0 || y > painter.getHeight();
   }
 
   function getTime() {
@@ -324,9 +773,10 @@
     stop() {
       this._running = false;
     }
+    
     addAnimator(animator) {
       animator.animation = this;
-      animator.getClip();
+      // const clip = animator.getClip();
       // if (clip) {
       //   this.addClip(clip);
       // }
@@ -397,7 +847,14 @@
       // el.afterUpdate();
 
       // const userSetClipPath = el.getClipPath();
-      if (el.childrenRef) ; else {
+      if (el.childrenRef) { // Group
+        const children = el.childrenRef();
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+
+          this._updateAndAddDisplayable(child);
+        }
+      } else {
         const disp = el;
         this._displayList[this._displayListLen++] = disp;
       }
@@ -844,10 +1301,34 @@
   }
 
   class Element {
+    id = guid()
+
     animators = []
+
+    // parent
 
     constructor(props = null) {
       this._init(props);
+    }
+
+    _init(props) {
+      // Init default properties
+      this.attr(props);
+    }
+
+    attr(keyOrObj, value) {
+      if (typeof keyOrObj === 'string') {
+        this.attrKV(keyOrObj, value);
+      } else if (isObject(keyOrObj)) {
+        let obj = keyOrObj;
+        let keysArr = keys(obj);
+        for (let i = 0; i < keysArr.length; i++) {
+          let key = keysArr[i];
+          this.attrKV(key, keyOrObj[key]);
+        }
+      }
+      this.markRedraw();
+      return this;
     }
 
     attrKV(key, value) {
@@ -870,7 +1351,7 @@
     updateInnerText(forceUpdate = undefined) {
 
     }
-
+    // 标记重绘
     markRedraw() {
       this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
       const zr = this.__zr;
@@ -964,6 +1445,7 @@
     })()
   }
 
+  mixin(Element, Eventful);
   mixin(Element, Transformable);
 
   const STYLE_MAGIC_KEY = '__zr_style_' + Math.round((Math.random() * 10));
@@ -1038,6 +1520,10 @@
   };
 
   const mathAbs = Math.abs;
+  const mathCos = Math.cos;
+  const mathSin = Math.sin;
+
+  const tmpAngles = [];
 
   class PathProxy {
     _len = 0
@@ -1137,6 +1623,28 @@
       return this;
     }
 
+    arc(cx, cy, r, startAngle, endAngle, anticlockwise) {
+      this._drawPendingPt();
+
+      tmpAngles[0] = startAngle;
+      tmpAngles[1] = endAngle;
+
+      startAngle = tmpAngles[0];
+      endAngle = tmpAngles[1];
+
+      let delta = endAngle - startAngle;
+
+      this.addData(
+        CMD.A, cx, cy, r, r, startAngle, delta, 0, anticlockwise ? 0 : 1
+      );
+
+      this._ctx && this._ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
+
+      this._xi = mathCos(endAngle) * r + cx;
+      this._yi = mathSin(endAngle) * r + cy;
+      return this;
+    }
+
     bezierCurveTo(x1, y1, x2, y2, x3, y3) {
       this.addData(CMD.C, x1, y1, x2, y2, x3, y3);
       if (this._ctx) {
@@ -1210,6 +1718,10 @@
   }, DEFAULT_COMMON_STYLE$1);
 
   class Path extends Displayable {
+    // 目前来看在constructor中不使用就不要定义它，不然外部拿到对象的属性就是undefined
+    // style
+    // shape
+
     constructor(opts = null) {
       super(opts);
     }
@@ -1242,6 +1754,10 @@
       if (!this.style) {
         this.useStyle({});
       }
+    }
+
+    getDefaultStyle() {
+      return null;
     }
 
     pathUpdated() {
@@ -1334,6 +1850,8 @@
     
   }
 
+  BezierCurve.prototype.type = 'bezier-curve';
+
   function buildPath(ctx, shape, closePath) {
     const smooth = shape.smooth;
     let points = shape.points;
@@ -1378,6 +1896,70 @@
       }
     }
   }
+
+  Polyline.prototype.type = 'polyline';
+
+  /**
+   * 圆形
+   */
+
+  class CircleShape {
+    cx = 0
+    cy = 0
+    r = 0
+  }
+
+  class Circle extends Path {
+
+    constructor(opts) {
+      super(opts);
+    }
+
+    getDefaultShape() {
+      return new CircleShape();
+    }
+
+    buildPath(ctx, shape) {
+      ctx.moveTo(shape.cx + shape.r, shape.cy);
+      ctx.arc(shape.cx, shape.cy, shape.r, 0, Math.PI * 2);
+    }
+  }
+  Circle.prototype.type = 'circle';
+
+  class Group extends Element {
+    isGroup = true
+    _children = []
+
+    constructor(opts) {
+      super();
+
+      this.attr(opts);
+    }
+
+    add(child) {
+      if (child) {
+        if (child !== this && child.parent !== this) {
+          this._children.push(child);
+          this._doAdd(child);
+        }
+      }
+
+      return this;
+    }
+
+    _doAdd(child) {
+      child.parent = this;
+
+      const zr = this.__zr;
+      zr && zr.refresh();
+    }
+
+    childrenRef() {
+      return this._children;
+    }
+  }
+
+  Group.prototype.type = 'group';
 
   function parseInt10(val) {
     return parseInt(val, 10);
@@ -1609,6 +2191,10 @@
     ctx.stroke();
   }
 
+  function doFillPath(ctx, style) {
+    ctx.fill();
+  }
+
   function bindCommonProps(ctx, style, prevStyle, forceSetAll, scope) {
     let styleChanged = false;
     if (forceSetAll || style.opacity !== prevStyle.opacity) {
@@ -1714,7 +2300,7 @@
 
   function brushPath(ctx, el, style, inBatch) {
     let hasStroke = styleHasStroke(style);
-    styleHasFill(style);
+    let hasFill = styleHasFill(style);
 
     const strokePercent = style.strokePercent;
     const strokePart = strokePercent < 1;
@@ -1767,6 +2353,9 @@
     // stroke || fill 放最后一步 (ctx.stroke() || ctx.fill())
     if (!inBatch) {
       if (style.strokeFirst) ; else {
+        if (hasFill) {
+          doFillPath(ctx);
+        }
         if (hasStroke) {
           doStrokePath(ctx);
         }
@@ -2067,6 +2656,9 @@
 
   exports.BezierCurve = BezierCurve;
   exports.BezierCurveShape = BezierCurveShape;
+  exports.Circle = Circle;
+  exports.CircleShape = CircleShape;
+  exports.Group = Group;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
   exports.init = init;

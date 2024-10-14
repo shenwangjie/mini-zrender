@@ -59,4 +59,6 @@ class BezierCurve extends Path {
   
 }
 
+BezierCurve.prototype.type = 'bezier-curve';
+
 export default BezierCurve;

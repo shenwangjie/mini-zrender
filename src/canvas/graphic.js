@@ -78,6 +78,10 @@ function doStrokePath(ctx, style) {
   ctx.stroke();
 }
 
+function doFillPath(ctx, style) {
+  ctx.fill();
+}
+
 function bindCommonProps(ctx, style, prevStyle, forceSetAll, scope) {
   let styleChanged = false;
   if (forceSetAll || style.opacity !== prevStyle.opacity) {
@@ -240,6 +244,9 @@ function brushPath(ctx, el, style, inBatch) {
     if (style.strokeFirst) {
 
     } else {
+      if (hasFill) {
+        doFillPath(ctx, style);
+      }
       if (hasStroke) {
         doStrokePath(ctx, style);
       }

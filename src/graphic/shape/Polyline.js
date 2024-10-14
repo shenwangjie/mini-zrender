@@ -30,4 +30,6 @@ class Polyline extends Path {
   }
 }
 
+Polyline.prototype.type = 'polyline';
+
 export default Polyline;

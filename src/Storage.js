@@ -42,8 +42,13 @@ export default class Storage {
     // el.afterUpdate();
 
     // const userSetClipPath = el.getClipPath();
-    if (el.childrenRef) {
+    if (el.childrenRef) { // Group
+      const children = el.childrenRef();
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
 
+        this._updateAndAddDisplayable(child)
+      }
     } else {
       const disp = el;
       this._displayList[this._displayListLen++] = disp;
