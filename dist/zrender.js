@@ -852,8 +852,13 @@
         for (let i = 0; i < children.length; i++) {
           const child = children[i];
 
+          if (el.__dirty) {
+            child.__dirty |= REDRAW_BIT;
+          }
+
           this._updateAndAddDisplayable(child);
         }
+        el.__dirty = 0;
       } else {
         const disp = el;
         this._displayList[this._displayListLen++] = disp;
@@ -986,7 +991,7 @@
     painterCtors[name] = Ctor;
   }
 
-  const REDRAW_BIT = 1; // 0001
+  const REDRAW_BIT$1 = 1; // 0001
   const STYLE_CHANGED_BIT = 2; // 0010
   const SHAPE_CHANGED_BIT = 4; // 0100
 
@@ -1353,7 +1358,7 @@
     }
     // 标记重绘
     markRedraw() {
-      this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
+      this.__dirty |= REDRAW_BIT$1; // 按位或 如3|5 = 7 0011 | 0101 = 0111
       const zr = this.__zr;
       if (zr) {
         zr.refresh();
@@ -1505,9 +1510,11 @@
       const dispProto = Displayable.prototype;
       dispProto.zlevel = 0;
 
-      dispProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT;
+      dispProto.__dirty = REDRAW_BIT$1 | STYLE_CHANGED_BIT;
     })()
   }
+
+  const hasTypedArray = typeof Float32Array !== 'undefined';
 
   const CMD = {
     M: 1,
@@ -1555,6 +1562,10 @@
 
     setContext(ctx) {
       this._ctx = ctx;
+    }
+
+    getContext() {
+      return this._ctx;
     }
 
     reset() {
@@ -1692,6 +1703,51 @@
       }
     }
 
+    beginPath() {
+      this._ctx && this._ctx.beginPath();
+      this.reset();
+      return this;
+    }
+
+    len() {
+      return this._len;
+    }
+
+    appendPath(path) {
+      if (!path instanceof Array) {
+        path = [path];
+      }
+      const len = path.length;
+      let appendSize = 0;
+      let offset = this._len;
+      for (let i = 0; i < len; i++) {
+        appendSize += path[i].len();
+      }
+      if (hasTypedArray && (this.data instanceof Float32Array)) ;
+      for (let i = 0; i < len; i++) {
+        const appendPathData = path[i].data;
+        for (let k = 0; k < appendPathData.length; k++) {
+          this.data[offset++] = appendPathData[k];
+        }
+      }
+      this._len = offset;
+      // _len和data的处理
+    }
+
+    setData(data) {
+      const len = data.length;
+
+      if (!(this.data && this.data.length === len) && hasTypedArray) {
+          this.data = new Float32Array(len);
+      }
+
+      for (let i = 0; i < len; i++) {
+          this.data[i] = data[i];
+      }
+
+      this._len = len;
+    }
+
     static initDefaultProps = (function () {
       const proto = PathProxy.prototype;
       proto._saveData = true;
@@ -1755,6 +1811,10 @@
         this.useStyle({});
       }
     }
+    // 需要重写
+    getDefaultShape() {
+      return {};
+    }
 
     getDefaultStyle() {
       return null;
@@ -1794,7 +1854,57 @@
           this.markRedraw();
       }
     }
+
+    getUpdatedPathProxy(inBatch) {
+      !this.path && this.createPathProxy();
+      this.path.beginPath();
+      this.buildPath(this.path, this.shape, inBatch);
+      return this.path;
+    }
+
+    static initDefaultProps = (function () {
+      const pathProto = Path.prototype;
+      pathProto.type = 'path';
+      pathProto.strokeContainThreshold = 5;
+      pathProto.segmentIgnoreThreshold = 0;
+      pathProto.subPixelOptimize = false;
+      pathProto.autoBatch = false;
+      pathProto.__dirty = REDRAW_BIT$1 | STYLE_CHANGED_BIT | SHAPE_CHANGED_BIT;
+    })()  
   }
+
+  function isPathProxy(path) {
+    return path.setData != null;
+  }
+  // 合并路径
+  function mergePath(pathEls, opts) {
+    const pathList = [];
+    const len = pathEls.length;
+    for (let i = 0; i < len; i++) {
+      const pathEl = pathEls[i];
+      pathList.push(pathEl.getUpdatedPathProxy(true));
+    }
+
+    const pathBundle = new Path(opts);
+    pathBundle.createPathProxy();
+    pathBundle.buildPath = function (path) {
+      if (isPathProxy(path)) {
+        path.appendPath(pathList);
+        // svg and vml renderer dont have context
+        const ctx = path.getContext();
+        if (ctx) {
+          path.rebuildPath(ctx, 1);
+        }
+      }
+    };
+
+    return pathBundle;
+  }
+
+  var path = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    mergePath: mergePath
+  });
 
   class BezierCurveShape {
     constructor(cpx2 = undefined, cpy2 = undefined) {
@@ -1925,6 +2035,62 @@
     }
   }
   Circle.prototype.type = 'circle';
+
+  /**
+   * 直线
+   */
+
+  class LineShape {
+    x1 = 0
+    y1 = 0
+
+    x2 = 0
+    y2 = 0
+
+    percent = 1
+  }
+
+  class Line extends Path {
+    constructor(opts) {
+      super(opts);
+    }
+
+    getDefaultStyle() {
+      return {
+        stroke: '#000',
+        fill: null
+      }
+    }
+
+    getDefaultShape() {
+      return new LineShape();
+    }
+
+    buildPath(ctx, shape) {
+      let x1, y1;
+      let x2, y2;
+
+      x1 = shape.x1;
+      y1 = shape.y1;
+      x2 = shape.x2;
+      y2 = shape.y2;
+
+      const percent = shape.percent;
+
+      if (percent === 0) {
+        return;
+      }
+
+      ctx.moveTo(x1, y1);
+      if (percent < 1) {
+        x2 = x1 * (1 - percent) + x2 * percent;
+        y2 = y1 * (1 - percent) + y2 * percent;
+      }
+      ctx.lineTo(x2, y2);
+    }
+  }
+
+  Line.prototype.type = 'line';
 
   class Group extends Element {
     isGroup = true
@@ -2498,7 +2664,7 @@
           prevLayer = layer;
         }
 
-        if ((el.__dirty & REDRAW_BIT) && !el.__inHover) {
+        if ((el.__dirty & REDRAW_BIT$1) && !el.__inHover) {
           layer.__dirty = true;
         }
       }
@@ -2659,9 +2825,12 @@
   exports.Circle = Circle;
   exports.CircleShape = CircleShape;
   exports.Group = Group;
+  exports.Line = Line;
+  exports.LineShape = LineShape;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
   exports.init = init;
+  exports.path = path;
   exports.registerPainter = registerPainter;
 
   Object.defineProperty(exports, '__esModule', { value: true });

@@ -47,8 +47,13 @@ export default class Storage {
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
 
+        if (el.__dirty) {
+          child.__dirty |= REDRAW_BIT;
+        }
+
         this._updateAndAddDisplayable(child)
       }
+      el.__dirty = 0;
     } else {
       const disp = el;
       this._displayList[this._displayListLen++] = disp;

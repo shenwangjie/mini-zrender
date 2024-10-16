@@ -1,3 +1,5 @@
+const hasTypedArray = typeof Float32Array !== 'undefined';
+
 const CMD = {
   M: 1,
   L: 2,
@@ -47,6 +49,10 @@ export default class PathProxy {
 
   setContext(ctx) {
     this._ctx = ctx;
+  }
+
+  getContext() {
+    return this._ctx;
   }
 
   reset() {
@@ -187,6 +193,53 @@ export default class PathProxy {
             break;
       }
     }
+  }
+
+  beginPath() {
+    this._ctx && this._ctx.beginPath();
+    this.reset();
+    return this;
+  }
+
+  len() {
+    return this._len;
+  }
+
+  appendPath(path) {
+    if (!path instanceof Array) {
+      path = [path];
+    }
+    const len = path.length;
+    let appendSize = 0;
+    let offset = this._len;
+    for (let i = 0; i < len; i++) {
+      appendSize += path[i].len();
+    }
+    if (hasTypedArray && (this.data instanceof Float32Array)) {
+
+    }
+    for (let i = 0; i < len; i++) {
+      const appendPathData = path[i].data;
+      for (let k = 0; k < appendPathData.length; k++) {
+        this.data[offset++] = appendPathData[k];
+      }
+    }
+    this._len = offset;
+    // _len和data的处理
+  }
+
+  setData(data) {
+    const len = data.length;
+
+    if (!(this.data && this.data.length === len) && hasTypedArray) {
+        this.data = new Float32Array(len);
+    }
+
+    for (let i = 0; i < len; i++) {
+        this.data[i] = data[i];
+    }
+
+    this._len = len;
   }
 
   static initDefaultProps = (function () {

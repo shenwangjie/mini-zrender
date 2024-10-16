@@ -1,6 +1,6 @@
 import Displayable, { DEFAULT_COMMON_STYLE } from './Displayable';
 import { keys, createObject, defaults, extend } from '../core/util'
-import { SHAPE_CHANGED_BIT } from './constants';
+import { SHAPE_CHANGED_BIT, STYLE_CHANGED_BIT, REDRAW_BIT } from './constants';
 import PathProxy from '../core/PathProxy';
 
 export const DEFAULT_PATH_STYLE = defaults({
@@ -57,6 +57,10 @@ class Path extends Displayable {
       this.useStyle({})
     }
   }
+  // 需要重写
+  getDefaultShape() {
+    return {};
+  }
 
   getDefaultStyle() {
     return null;
@@ -96,6 +100,23 @@ class Path extends Displayable {
         this.markRedraw();
     }
   }
+
+  getUpdatedPathProxy(inBatch) {
+    !this.path && this.createPathProxy();
+    this.path.beginPath();
+    this.buildPath(this.path, this.shape, inBatch);
+    return this.path;
+  }
+
+  static initDefaultProps = (function () {
+    const pathProto = Path.prototype;
+    pathProto.type = 'path';
+    pathProto.strokeContainThreshold = 5;
+    pathProto.segmentIgnoreThreshold = 0;
+    pathProto.subPixelOptimize = false;
+    pathProto.autoBatch = false;
+    pathProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT | SHAPE_CHANGED_BIT;
+  })()  
 }
 
 export default Path

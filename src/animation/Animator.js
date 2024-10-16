@@ -25,6 +25,28 @@ function interpolateNumber(p0, p1, percent) {
   return (p1 - p0) * percent + p0;
 }
 
+function interpolate1DArray(out, p0, p1, percent) {
+  const len = p0.length;
+  for (let i = 0; i < len; i++) {
+    out[i] = interpolateNumber(p0[i], p1[i], percent);
+  }
+  return out;
+}
+
+function interpolate2DArray(out, p0, p1, percent) {
+  const len = p0.length;
+  const len2 = len && p0[0].length;
+  for (let i = 0; i < len; i++) {
+    if (!out[i]) {
+      out[i] = [];
+    }
+    for (let j = 0; j < len2; j++) {
+      out[i][j] = interpolateNumber(p0[i][j], p1[i][j], percent);
+    }
+  }
+  return out;
+}
+
 export default class Animator {
   animation
 
@@ -160,6 +182,10 @@ export default class Animator {
   }
 }
 
+function isArrayValueType(valType) {
+  return valType === VALUE_TYPE_1D_ARRAY || valType === VALUE_TYPE_2D_ARRAY;
+}
+
 class Track {
   keyframes = []
   propName
@@ -243,7 +269,23 @@ class Track {
 
     const interval = nextFrame.percent - frame.percent;
     let w = interval === 0 ? 1 : mathMin((percent - frame.percent) / interval, 1);
-    const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
-    target[propName] = value;
+
+    const valType = this.valType;
+    const isValueColor = valType === VALUE_TYPE_COLOR;
+
+    let targetArr = isAdditive ? this._additiveValue : target[propName];
+    if ((isArrayValueType(valType) || isValueColor) && !targetArr) {
+      targetArr = this._additiveValue = [];
+    }
+    if (this.discrete) {
+
+    } else if (isArrayValueType(valType)) {
+      valType === VALUE_TYPE_1D_ARRAY
+          ? interpolate1DArray(targetArr, frame, nextFrame, w)
+          : interpolate2DArray(targetArr, frame, nextFrame, w);
+    } else {
+      const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
+      target[propName] = value;
+    }
   }
 }
