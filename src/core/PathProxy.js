@@ -1,3 +1,7 @@
+import { fromArc } from './bbox';
+import BoundingRect from './BoundingRect';
+import * as vec2 from './vector';
+
 const hasTypedArray = typeof Float32Array !== 'undefined';
 
 const CMD = {
@@ -9,6 +13,11 @@ const CMD = {
   Z: 6,
   R: 7
 }
+
+const min = [];
+const max = [];
+const min2 = [];
+const max2 = [];
 
 const mathAbs = Math.abs;
 const mathMin = Math.min;
@@ -191,6 +200,29 @@ export default class PathProxy {
               yi = y;
             }
             break;
+        case CMD.A:
+            const cx = data[i++];
+            const cy = data[i++];
+            const rx = data[i++];
+            const ry = data[i++];
+            let startAngle = data[i++];
+            let delta = data[i++];
+            const psi = data[i++];
+            const anticlockwise = !data[i++];
+            const r = rx > ry ? rx : ry;
+            const isEllipse = mathAbs(rx - ry) > 1e-3;
+            let endAngle = startAngle + delta;
+            let breakBuild = false;
+
+            if (isEllipse && ctx.ellipse) {
+              ctx.ellipse(cx, cy, rx, ry, psi, startAngle, endAngle, anticlockwise);
+            } else {
+              ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
+            }
+
+            xi = mathCos(endAngle) * rx + cx;
+            yi = mathSin(endAngle) * ry + cy;
+            break;
       }
     }
   }
@@ -240,6 +272,65 @@ export default class PathProxy {
     }
 
     this._len = len;
+  }
+
+  getBoundingRect() {
+    min[0] = min[1] = min2[0] = min2[1] = Number.MAX_VALUE;
+    max[0] = max[1] = max2[0] = max2[1] = -Number.MAX_VALUE;
+
+    const data = this.data;
+    let xi = 0; let yi = 0;
+    let x0 = 0; let y0 = 0;
+    
+    let i;
+    for (i = 0; i < this._len;) {
+      const cmd = data[i++];
+
+      const isFirst = i === 1;
+      if (isFirst) {
+        xi = data[i];
+        yi = data[i + 1];
+        x0 = xi;
+        y0 = yi;
+      }
+
+      switch(cmd) {
+        case CMD.M:
+          xi = x0 = data[i++];
+          yi = y0 = data[i++];
+          min2[0] = x0;
+          min2[i] = y0;
+          max2[0] = x0;
+          max2[1] = y0;
+          break;
+        case CMD.A: 
+          const cx = data[i++];
+          const cy = data[i++];
+          const rx = data[i++];
+          const ry = data[i++];
+          const startAngle = data[i++];
+          const endAngle = data[i++] + startAngle;
+
+          // arc 旋转
+          i += 1;
+          const anticlockwise = !data[i++];
+
+          fromArc(
+            cx, cy, rx, ry, startAngle, endAngle, anticlockwise, min2, max2
+          );
+
+          xi = mathCos(endAngle) * rx + cx;
+          yi = mathSin(endAngle) * ry + cy;
+          break;
+      }
+
+      vec2.min(min, min, min2);
+      vec2.max(max, max, max2);
+    }
+
+    return new BoundingRect(
+      min[0], min[1], max[0] - min[0], max[1] - min[1]
+    );
   }
 
   static initDefaultProps = (function () {

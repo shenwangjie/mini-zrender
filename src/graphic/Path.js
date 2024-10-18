@@ -108,13 +108,37 @@ class Path extends Displayable {
     return this.path;
   }
 
+  getBoundingRect() {
+    let rect = this._rect;
+    const style = this.style;
+    const needsUpdateRect = !rect;
+    if (needsUpdateRect) {
+      let firstInvoke = false;
+      if (!this.path) {
+        firstInvoke = true;
+        this.createPathProxy();
+      }
+      let path = this.path;
+      if (firstInvoke || (this.__dirty & SHAPE_CHANGED_BIT)) {
+        path.beginPath();
+        this.buildPath(path, this.shape, false);
+        this.pathUpdated();
+      }
+      rect = path.getBoundingRect();
+    }
+
+    this._rect = rect;
+
+    return rect;
+  }
+
   static initDefaultProps = (function () {
     const pathProto = Path.prototype;
     pathProto.type = 'path';
     pathProto.strokeContainThreshold = 5;
     pathProto.segmentIgnoreThreshold = 0;
     pathProto.subPixelOptimize = false;
-    pathProto.autoBatch = false;
+    pathProto.autoBatch = false; // 元素能被自动批量处理
     pathProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT | SHAPE_CHANGED_BIT;
   })()  
 }

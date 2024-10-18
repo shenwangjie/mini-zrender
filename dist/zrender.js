@@ -842,9 +842,9 @@
     }
 
     _updateAndAddDisplayable(el) {
-      // el.beforeUpdate();
-      // el.update();
-      // el.afterUpdate();
+      el.beforeUpdate();
+      el.update();
+      el.afterUpdate();
 
       // const userSetClipPath = el.getClipPath();
       if (el.childrenRef) { // Group
@@ -852,9 +852,9 @@
         for (let i = 0; i < children.length; i++) {
           const child = children[i];
 
-          if (el.__dirty) {
-            child.__dirty |= REDRAW_BIT;
-          }
+          // if (el.__dirty) {
+          //   child.__dirty |= REDRAW_BIT;
+          // }
 
           this._updateAndAddDisplayable(child);
         }
@@ -991,13 +991,135 @@
     painterCtors[name] = Ctor;
   }
 
-  const REDRAW_BIT$1 = 1; // 0001
+  const REDRAW_BIT = 1; // 0001
   const STYLE_CHANGED_BIT = 2; // 0010
   const SHAPE_CHANGED_BIT = 4; // 0100
 
+  /**
+   * 
+   * 3x2矩阵操作类
+   */
+  function create() {
+    return [1, 0, 0, 1, 0, 0];
+  }
+
+  // 旋转变换
+  function rotation(out, a, rad, pivot) {
+    const aa = a[0];
+    const ac = a[2];
+    const atx = a[4];
+    const ab = a[1];
+    const ad = a[3];
+    const aty = a[5];
+    const st = Math.sin(rad);
+    const ct = Math.cos(rad);
+
+    out[0] = aa * ct + ab * st;
+    out[1] = -aa * st + ab * ct;
+    out[2] = ac * ct + ad * st;
+    out[3] = -ac * st + ct * ad;
+    out[4] = ct * (atx - pivot[0]) + st * (aty - pivot[1]) + pivot[0];
+    out[5] = ct * (aty - pivot[1]) - st * (atx - pivot[0]) + pivot[1];
+    return out;
+  }
+
+  // 求逆矩阵
+  function invert(out, a) {
+
+    const aa = a[0];
+    const ac = a[2];
+    const atx = a[4];
+    const ab = a[1];
+    const ad = a[3];
+    const aty = a[5];
+
+    let det = aa * ad - ab * ac;
+    if (!det) {
+        return null;
+    }
+    det = 1.0 / det;
+
+    out[0] = ad * det;
+    out[1] = -ab * det;
+    out[2] = -ac * det;
+    out[3] = aa * det;
+    out[4] = (ac * aty - ad * atx) * det;
+    out[5] = (ab * atx - aa * aty) * det;
+    return out;
+  }
+
+  const EPSILON = 5e-5;
+  function isNotAroundZero(val) {
+    return val > EPSILON || val < -EPSILON;
+  }
   class Transformable {
+
+    getLocalTransform(m) {
+      return Transformable.getLocalTransform(this, m);
+    }
+    
+    // 更新全局的transform（position等等）
     updateTransform() {
+      // const parentTransform = this.parent && this.parent.transform;
+      const needLocalTransform = this.needLocalTransform();
+
+      let m = this.transform;
+
+      m = m || create();
+
+      if (needLocalTransform) {
+        this.getLocalTransform(m);
+      } 
+
+      // 保存矩阵变换
+      this.transform = m;
+
+      this._resolveGlobalScaleRatio(m);
       return;
+    }
+
+    _resolveGlobalScaleRatio(m) {
+      this.globalScaleRatio;
+
+      // 逆变换
+      this.invTransform = this.invTransform || create();
+      invert(this.invTransform, m);
+    }
+
+    static getLocalTransform(target, m) {
+      m = m || [];
+      const ox = target.originX || 0;
+      const oy = target.originY || 0;
+      const sx = target.scaleX;
+      const sy = target.scaleY;
+      const ax = target.anchorX;
+      const ay = target.anchorY;
+      const rotation$1 = target.rotation || 0;
+      const x = target.x;
+      const y = target.y;
+      const skewX = target.skewX ? Math.tan(target.skewX) : 0;
+      const skewY = target.skewY ? Math.tan(-target.skewY) : 0;
+
+      if (ox || oy || ax || ay) {
+        const dx = ox + ax;
+        const dy = oy + ay;
+        m[4] = -dx * sx - skewX * dy * sy;
+        m[5] = -dy * sy - skewY * dx * sx;
+      } else {
+        m[4] = m[5] = 0;
+      }
+      // scale
+      m[0] = sx;
+      m[3] = sy;
+      // skew
+      m[1] = skewY * sx;
+      m[2] = skewX * sy;
+      // rotation
+      rotation$1 && rotation(m, m, rotation$1);
+
+      m[4] += ox + x;
+      m[5] += oy + y;
+      return m;
     }
 
     getGlobalScale(out) {
@@ -1008,6 +1130,27 @@
         out[1] = 1;
         return out;
       }
+      // 缩放和倾斜的平方根
+      out[0] = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
+      out[1] = Math.sqrt(m[2] * m[2] + m[3] * m[3]);
+      if (m[0] < 0) {
+        out[0] = -out[0];
+      }
+      if (m[3] < 0) {
+        out[1] = -out[1];
+      }
+      return out;
+    }
+
+    // 是否需要计算transform
+    needLocalTransform() {
+      return isNotAroundZero(this.rotation)
+          || isNotAroundZero(this.x)
+          || isNotAroundZero(this.y)
+          || isNotAroundZero(this.scaleX - 1)
+          || isNotAroundZero(this.scaleY - 1)
+          || isNotAroundZero(this.skewX)
+          || isNotAroundZero(this.skewY);
     }
   }
 
@@ -1079,12 +1222,55 @@
     if (isArrayLike(value)) ;
     return value;
   }
+  // 判断几维数组
+  function guessArrayDim(value) {
+    return isArrayLike(value && value[0]) ? 2 : 1;
+  }
 
   const VALUE_TYPE_NUMBER = 0;
+  const VALUE_TYPE_1D_ARRAY = 1;
+  const VALUE_TYPE_2D_ARRAY = 2;
+  const VALUE_TYPE_COLOR = 3;
   const VALUE_TYPE_UNKOWN = 6;
 
   function interpolateNumber(p0, p1, percent) {
     return (p1 - p0) * percent + p0;
+  }
+
+  function interpolate1DArray(out, p0, p1, percent) {
+    const len = p0.length;
+    for (let i = 0; i < len; i++) {
+      out[i] = interpolateNumber(p0[i], p1[i], percent);
+    }
+    return out;
+  }
+
+  function interpolate2DArray(out, p0, p1, percent) {
+    const len = p0.length;
+    const len2 = len && p0[0].length;
+    for (let i = 0; i < len; i++) {
+      if (!out[i]) {
+        out[i] = [];
+      }
+      for (let j = 0; j < len2; j++) {
+        out[i][j] = interpolateNumber(p0[i][j], p1[i][j], percent);
+      }
+    }
+    return out;
+  }
+
+  function fillArray(val0, val1, arrDim) {
+    let arr0 = val0[0];
+    let arr1 = val1[0];
+    if (!arr0.push || !arr1.push) {
+      return;
+    }
+    arr0.length;
+    arr1.length;
+
+    arr0[0] && arr0[0].length;
+    for (let i = 0; i < arr0.length; i++) {
+    }
   }
 
   class Animator {
@@ -1222,6 +1408,10 @@
     }
   }
 
+  function isArrayValueType(valType) {
+    return valType === VALUE_TYPE_1D_ARRAY || valType === VALUE_TYPE_2D_ARRAY;
+  }
+
   class Track {
     keyframes = []
     propName
@@ -1245,8 +1435,17 @@
       let discrete = false;
       let value = rawValue;
 
-      if (isNumber(rawValue) && !eqNaN(rawValue)) {
-        valType = VALUE_TYPE_NUMBER;
+      if (isArrayLike(rawValue)) {
+        let arrayDim = guessArrayDim(rawValue);
+        valType = arrayDim;
+        if (arrayDim === 1 && !isNumber(rawValue[0])
+            || arrayDim === 2 && !isNumber(rawValue[0][0])) {
+              discrete = true;
+            }
+      } else {
+        if (isNumber(rawValue) && !eqNaN(rawValue)) {
+          valType = VALUE_TYPE_NUMBER;
+        }
       }
 
       if (len === 0) {
@@ -1267,7 +1466,19 @@
 
     prepare(maxTime, additiveTrack) {
       let kfs = this.keyframes;
-      kfs.length;
+      const kfsLen = kfs.length;
+      const isDiscrete = this.discrete;
+      const isArr = isArrayValueType(this.valType);
+      for (let i = 0; i < kfsLen; i++) {
+        const kf = kfs[i];
+        // 修改了percent
+        kf.percent = kf.time / maxTime;
+        if (!isDiscrete) {
+          if (isArr && i !== kfsLen - 1) {
+            fillArray(kf.value, kfs[kfsLen - 1].value, this.valType);
+          }
+        }
+      }
     }
 
     needsAnimate() {
@@ -1300,8 +1511,22 @@
 
       const interval = nextFrame.percent - frame.percent;
       let w = interval === 0 ? 1 : mathMin((percent - frame.percent) / interval, 1);
-      const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
-      target[propName] = value;
+
+      const valType = this.valType;
+      const isValueColor = valType === VALUE_TYPE_COLOR;
+
+      let targetArr = isAdditive ? this._additiveValue : target[propName];
+      if ((isArrayValueType(valType) || isValueColor) && !targetArr) {
+        targetArr = this._additiveValue = [];
+      }
+      if (this.discrete) ; else if (isArrayValueType(valType)) {
+        valType === VALUE_TYPE_1D_ARRAY
+            ? interpolate1DArray(targetArr, frame[valueKey], nextFrame[valueKey], w)
+            : interpolate2DArray(targetArr, frame[valueKey], nextFrame[valueKey], w);
+      } else {
+        const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
+        target[propName] = value;
+      }
     }
   }
 
@@ -1358,7 +1583,7 @@
     }
     // 标记重绘
     markRedraw() {
-      this.__dirty |= REDRAW_BIT$1; // 按位或 如3|5 = 7 0011 | 0101 = 0111
+      this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
       const zr = this.__zr;
       if (zr) {
         zr.refresh();
@@ -1430,6 +1655,7 @@
             },
             set(val) {
               self[xKey] = val;
+              // console.log('pos[0] = ' + val);
             }
           });
           Object.defineProperty(pos, 1, {
@@ -1510,8 +1736,64 @@
       const dispProto = Displayable.prototype;
       dispProto.zlevel = 0;
 
-      dispProto.__dirty = REDRAW_BIT$1 | STYLE_CHANGED_BIT;
+      dispProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT;
     })()
+  }
+
+  // 求两个向量最小值
+  function min$1(out, v1, v2) {
+    out[0] = Math.min(v1[0], v2[0]);
+    out[1] = Math.min(v1[1], v2[1]);
+    return out;
+  }
+
+  // 求两个向量最大值
+  function max$1(out, v1, v2) {
+    out[0] = Math.max(v1[0], v2[0]);
+    out[1] = Math.max(v1[1], v2[1]);
+    return out;
+  }
+
+  const PI2 = Math.PI * 2;
+
+  function fromArc(x, y, rx, ry, startAngle, endAngle, anticlockwise, min, max) {
+    // const vec2Min = vec2.min;
+    // const vec2Max = vec2.max;
+
+    const diff = Math.abs(startAngle - endAngle);
+
+    // 是一个圆
+    if (diff % PI2 < 1e-4 && diff > 1e-4) {
+      min[0] = x - rx;
+      min[1] = y - ry;
+      max[0] = x + rx;
+      max[1] = y + ry;
+      return;
+    }
+
+  }
+
+  class BoundingRect {
+    x
+    y
+    width
+    height
+
+    constructor(x, y, width, height) {
+      if (width < 0) {
+        x = x + width;
+        width = -width;
+      }
+      if (height < 0) {
+        y = y + height;
+        height = -height;
+      }
+
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+    }
   }
 
   const hasTypedArray = typeof Float32Array !== 'undefined';
@@ -1525,6 +1807,11 @@
     Z: 6,
     R: 7
   };
+
+  const min = [];
+  const max = [];
+  const min2 = [];
+  const max2 = [];
 
   const mathAbs = Math.abs;
   const mathCos = Math.cos;
@@ -1699,6 +1986,28 @@
                 yi = y;
               }
               break;
+          case CMD.A:
+              const cx = data[i++];
+              const cy = data[i++];
+              const rx = data[i++];
+              const ry = data[i++];
+              let startAngle = data[i++];
+              let delta = data[i++];
+              const psi = data[i++];
+              const anticlockwise = !data[i++];
+              const r = rx > ry ? rx : ry;
+              const isEllipse = mathAbs(rx - ry) > 1e-3;
+              let endAngle = startAngle + delta;
+
+              if (isEllipse && ctx.ellipse) {
+                ctx.ellipse(cx, cy, rx, ry, psi, startAngle, endAngle, anticlockwise);
+              } else {
+                ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
+              }
+
+              xi = mathCos(endAngle) * rx + cx;
+              yi = mathSin(endAngle) * ry + cy;
+              break;
         }
       }
     }
@@ -1746,6 +2055,65 @@
       }
 
       this._len = len;
+    }
+
+    getBoundingRect() {
+      min[0] = min[1] = min2[0] = min2[1] = Number.MAX_VALUE;
+      max[0] = max[1] = max2[0] = max2[1] = -Number.MAX_VALUE;
+
+      const data = this.data;
+      let xi = 0; let yi = 0;
+      let x0 = 0; let y0 = 0;
+      
+      let i;
+      for (i = 0; i < this._len;) {
+        const cmd = data[i++];
+
+        const isFirst = i === 1;
+        if (isFirst) {
+          xi = data[i];
+          yi = data[i + 1];
+          x0 = xi;
+          y0 = yi;
+        }
+
+        switch(cmd) {
+          case CMD.M:
+            xi = x0 = data[i++];
+            yi = y0 = data[i++];
+            min2[0] = x0;
+            min2[i] = y0;
+            max2[0] = x0;
+            max2[1] = y0;
+            break;
+          case CMD.A: 
+            const cx = data[i++];
+            const cy = data[i++];
+            const rx = data[i++];
+            const ry = data[i++];
+            const startAngle = data[i++];
+            const endAngle = data[i++] + startAngle;
+
+            // arc 旋转
+            i += 1;
+            const anticlockwise = !data[i++];
+
+            fromArc(
+              cx, cy, rx, ry, startAngle, endAngle, anticlockwise, min2, max2
+            );
+
+            xi = mathCos(endAngle) * rx + cx;
+            yi = mathSin(endAngle) * ry + cy;
+            break;
+        }
+
+        min$1(min, min, min2);
+        max$1(max, max, max2);
+      }
+
+      return new BoundingRect(
+        min[0], min[1], max[0] - min[0], max[1] - min[1]
+      );
     }
 
     static initDefaultProps = (function () {
@@ -1862,14 +2230,38 @@
       return this.path;
     }
 
+    getBoundingRect() {
+      let rect = this._rect;
+      this.style;
+      const needsUpdateRect = !rect;
+      if (needsUpdateRect) {
+        let firstInvoke = false;
+        if (!this.path) {
+          firstInvoke = true;
+          this.createPathProxy();
+        }
+        let path = this.path;
+        if (firstInvoke || (this.__dirty & SHAPE_CHANGED_BIT)) {
+          path.beginPath();
+          this.buildPath(path, this.shape, false);
+          this.pathUpdated();
+        }
+        rect = path.getBoundingRect();
+      }
+
+      this._rect = rect;
+
+      return rect;
+    }
+
     static initDefaultProps = (function () {
       const pathProto = Path.prototype;
       pathProto.type = 'path';
       pathProto.strokeContainThreshold = 5;
       pathProto.segmentIgnoreThreshold = 0;
       pathProto.subPixelOptimize = false;
-      pathProto.autoBatch = false;
-      pathProto.__dirty = REDRAW_BIT$1 | STYLE_CHANGED_BIT | SHAPE_CHANGED_BIT;
+      pathProto.autoBatch = false; // 元素能被自动批量处理
+      pathProto.__dirty = REDRAW_BIT | STYLE_CHANGED_BIT | SHAPE_CHANGED_BIT;
     })()  
   }
 
@@ -2127,6 +2519,35 @@
 
   Group.prototype.type = 'group';
 
+  class Gradient {
+    colorStops
+
+    constructor(colorStops) {
+      this.colorStops = colorStops || [];
+    }
+
+    addColorStop(offset, color) {
+      this.colorStops.push({
+        offset,
+        color
+      });
+    }
+  }
+
+  class LinearGradient extends Gradient {
+    constructor(x, y, x2, y2, colorStops, globalCoord) {
+      super(colorStops);
+      this.x = x == null ? 0 : x;
+      this.y = y == null ? 0 : y;
+      this.x2 = x2 == null ? 1 : x2;
+      this.y2 = y2 == null ? 0 : y2;
+
+      this.type = 'linear';
+
+      this.global = globalCoord || false;
+    }
+  }
+
   function parseInt10(val) {
     return parseInt(val, 10);
   }
@@ -2145,6 +2566,48 @@
     const root_s_wh = parseInt10(root.style[wh]); // '1000px' 没有cwh
 
     return ((root_cwh || stl_wh || root_s_wh) - (parseInt10(stl[plt]) || 0) - (parseInt10(stl[prb]) || 0)) || 0;
+  }
+
+  function isSafeNum(num) {
+    // NaN、Infinity、undefined、'xx'
+    return isFinite(num);
+  }
+
+  function createLinearGradient(ctx, obj, rect) {
+    let x = obj.x == null ? 0 : obj.x;
+    let x2 = obj.x2 == null ? 1 : obj.x2;
+    let y = obj.y == null ? 0 : obj.y;
+    let y2 = obj.y2 == null ? 0 : obj.y2;
+
+    if (!obj.global) {
+      x = x * rect.width + rect.x;
+      x2 = x2 * rect.width + rect.x;
+      y = y * rect.height + rect.y;
+      y2 = y2 * rect.height + rect.y;
+    }
+
+    x = isSafeNum(x) ? x : 0;
+    x2 = isSafeNum(x2) ? x2 : 1;
+    y = isSafeNum(y) ? y : 0;
+    y2 = isSafeNum(y2) ? y2 : 0;
+
+    const canvasGradient = ctx.createLinearGradient(x, y, x2, y2);
+
+    return canvasGradient;
+  }
+
+  function getCanvasGradient(ctx, obj, rect) {
+    const canvasGradient = obj.type === 'radial'
+          ? console.log('not do this')
+          : createLinearGradient(ctx, obj, rect);
+
+    const colorStops = obj.colorStops;
+    for (let i = 0; i < colorStops.length; i++) {
+      canvasGradient.addColorStop(
+        colorStops[i].offset, colorStops[i].color
+      );
+    }
+    return canvasGradient;
   }
 
   let dpr = 1;
@@ -2340,7 +2803,11 @@
   function setContextTransform(ctx, el) {
     const m = el.transform;
     const dpr = ctx.dpr || 1;
-    if (m) ; else {
+    // 之后的图形都沿用此种变换
+    // 水平缩放、水平倾斜、垂直倾斜、垂直缩放、水平平移、垂直平移
+    if (m) {
+      ctx.setTransform(dpr * m[0], dpr * m[1], dpr * m[2], dpr * m[3], dpr * m[4], dpr * m[5]);
+    } else {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
   }
@@ -2480,8 +2947,27 @@
     const path = el.path || pathProxyForDraw;
     const dirtyFlag = el.__dirty;
     if (!inBatch) {
-      style.fill;
-      style.stroke;
+      const fill = style.fill;
+      const stroke = style.stroke;
+
+      const hasFillGradient = hasFill && !!fill.colorStops;
+      const hasStrokeGradient = hasStroke && !!stroke.colorStops;
+
+      let fillGradient;
+      let rect;
+      if (hasFillGradient || hasStrokeGradient) {
+        rect = el.getBoundingRect();
+      }
+
+      if (hasFillGradient) {
+        fillGradient = dirtyFlag 
+            ? getCanvasGradient(ctx, fill, rect)
+            : console.log('not do this');
+      }
+
+      if (hasFillGradient) {
+        ctx.fillStyle = fillGradient;
+      }
     }
 
     const scale = el.getGlobalScale();
@@ -2664,7 +3150,7 @@
           prevLayer = layer;
         }
 
-        if ((el.__dirty & REDRAW_BIT$1) && !el.__inHover) {
+        if ((el.__dirty & REDRAW_BIT) && !el.__inHover) {
           layer.__dirty = true;
         }
       }
@@ -2827,6 +3313,7 @@
   exports.Group = Group;
   exports.Line = Line;
   exports.LineShape = LineShape;
+  exports.LinearGradient = LinearGradient;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
   exports.init = init;

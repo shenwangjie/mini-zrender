@@ -12,6 +12,10 @@ export function cloneValue(value) {
   }
   return value;
 }
+// 判断几维数组
+function guessArrayDim(value) {
+  return isArrayLike(value && value[0]) ? 2 : 1;
+}
 
 const VALUE_TYPE_NUMBER = 0;
 const VALUE_TYPE_1D_ARRAY = 1;
@@ -45,6 +49,23 @@ function interpolate2DArray(out, p0, p1, percent) {
     }
   }
   return out;
+}
+
+function fillArray(val0, val1, arrDim) {
+  let arr0 = val0[0];
+  let arr1 = val1[0];
+  if (!arr0.push || !arr1.push) {
+    return;
+  }
+  const arr0Len = arr0.length;
+  const arr1Len = arr1.length;
+
+  const len2 = arr0[0] && arr0[0].length;
+  for (let i = 0; i < arr0.length; i++) {
+    if (arrDim === 1) {
+
+    }
+  }
 }
 
 export default class Animator {
@@ -209,8 +230,17 @@ class Track {
     let discrete = false;
     let value = rawValue;
 
-    if (isNumber(rawValue) && !eqNaN(rawValue)) {
-      valType = VALUE_TYPE_NUMBER;
+    if (isArrayLike(rawValue)) {
+      let arrayDim = guessArrayDim(rawValue);
+      valType = arrayDim;
+      if (arrayDim === 1 && !isNumber(rawValue[0])
+          || arrayDim === 2 && !isNumber(rawValue[0][0])) {
+            discrete = true;
+          }
+    } else {
+      if (isNumber(rawValue) && !eqNaN(rawValue)) {
+        valType = VALUE_TYPE_NUMBER;
+      }
     }
 
     if (len === 0) {
@@ -232,8 +262,17 @@ class Track {
   prepare(maxTime, additiveTrack) {
     let kfs = this.keyframes;
     const kfsLen = kfs.length;
+    const isDiscrete = this.discrete;
+    const isArr = isArrayValueType(this.valType);
     for (let i = 0; i < kfsLen; i++) {
-
+      const kf = kfs[i];
+      // 修改了percent
+      kf.percent = kf.time / maxTime;
+      if (!isDiscrete) {
+        if (isArr && i !== kfsLen - 1) {
+          fillArray(kf.value, kfs[kfsLen - 1].value, this.valType);
+        }
+      }
     }
   }
 
@@ -281,8 +320,8 @@ class Track {
 
     } else if (isArrayValueType(valType)) {
       valType === VALUE_TYPE_1D_ARRAY
-          ? interpolate1DArray(targetArr, frame, nextFrame, w)
-          : interpolate2DArray(targetArr, frame, nextFrame, w);
+          ? interpolate1DArray(targetArr, frame[valueKey], nextFrame[valueKey], w)
+          : interpolate2DArray(targetArr, frame[valueKey], nextFrame[valueKey], w);
     } else {
       const value = interpolateNumber(frame[valueKey], nextFrame[valueKey], w);
       target[propName] = value;

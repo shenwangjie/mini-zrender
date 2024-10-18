@@ -37,9 +37,9 @@ export default class Storage {
   }
 
   _updateAndAddDisplayable(el) {
-    // el.beforeUpdate();
-    // el.update();
-    // el.afterUpdate();
+    el.beforeUpdate();
+    el.update();
+    el.afterUpdate();
 
     // const userSetClipPath = el.getClipPath();
     if (el.childrenRef) { // Group
@@ -47,9 +47,9 @@ export default class Storage {
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
 
-        if (el.__dirty) {
-          child.__dirty |= REDRAW_BIT;
-        }
+        // if (el.__dirty) {
+        //   child.__dirty |= REDRAW_BIT;
+        // }
 
         this._updateAndAddDisplayable(child)
       }

@@ -2,6 +2,7 @@ import PathProxy from '../core/PathProxy.js'
 import { SHAPE_CHANGED_BIT } from '../graphic/constants.js'
 import Path from '../graphic/Path.js';
 import { getLineDash } from '../canvas/dashStyle.js'
+import { getCanvasGradient } from './helper.js';
 
 const DRAW_TYPE_PATH = 1;
 const DRAW_TYPE_IMAGE = 2;
@@ -59,8 +60,10 @@ function flushPathDrawn(ctx, scope) {
 function setContextTransform(ctx, el) {
   const m = el.transform;
   const dpr = ctx.dpr || 1;
+  // 之后的图形都沿用此种变换
+  // 水平缩放、水平倾斜、垂直倾斜、垂直缩放、水平平移、垂直平移
   if (m) {
-
+    ctx.setTransform(dpr * m[0], dpr * m[1], dpr * m[2], dpr * m[3], dpr * m[4], dpr * m[5]);
   } else {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -203,6 +206,25 @@ function brushPath(ctx, el, style, inBatch) {
   if (!inBatch) {
     const fill = style.fill;
     const stroke = style.stroke;
+
+    const hasFillGradient = hasFill && !!fill.colorStops;
+    const hasStrokeGradient = hasStroke && !!stroke.colorStops;
+
+    let fillGradient;
+    let rect;
+    if (hasFillGradient || hasStrokeGradient) {
+      rect = el.getBoundingRect();
+    }
+
+    if (hasFillGradient) {
+      fillGradient = dirtyFlag 
+          ? getCanvasGradient(ctx, fill, rect)
+          : console.log('not do this');
+    }
+
+    if (hasFillGradient) {
+      ctx.fillStyle = fillGradient;
+    }
   }
 
   const scale = el.getGlobalScale();

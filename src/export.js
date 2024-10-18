@@ -7,4 +7,6 @@ export {default as Line, LineShape} from './graphic/shape/Line';
 
 export {default as Group} from './graphic/Group';
 
+export {default as LinearGradient} from './graphic/LinearGradient';
+
 export {pathTool as path};
