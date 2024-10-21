@@ -162,6 +162,24 @@ export default class PathProxy {
     return this;
   }
 
+  closePath() {
+    // Add pending point for previous path.
+    this._drawPendingPt();
+
+    this.addData(CMD.Z);
+
+    const ctx = this._ctx;
+    const x0 = this._x0;
+    const y0 = this._y0;
+    if (ctx) {
+        ctx.closePath();
+    }
+
+    this._xi = x0;
+    this._yi = y0;
+    return this;
+  }
+
   rebuildPath(ctx, percent) {
     const data = this.data;
     const len = this._len;

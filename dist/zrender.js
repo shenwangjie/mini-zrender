@@ -6,6 +6,36 @@
 
   const protoKey = '__proto__';
 
+  const BUILTIN_OBJECT = reduce([
+    'Function',
+    'RegExp',
+    'Date',
+    'Error',
+    'CanvasGradient',
+    'CanvasPattern',
+    // node-canvas
+    'Image',
+    'Canvas'
+  ], (obj, val) => {
+    obj['[object ' + val + ']'] = true;
+    return obj;
+  }, {});
+
+  const TYPED_ARRAY = reduce([
+    'Int8',
+    'Uint8',
+    'Uint8Clamped',
+    'Int16',
+    'Uint16',
+    'Int32',
+    'Uint32',
+    'Float32',
+    'Float64'
+  ], (obj, val) => {
+    obj['object ' + val + 'Array]'] = true;
+    return obj;
+  }, {});
+
   const objToString = Object.prototype.toString;
 
   const arrayProto = Array.prototype;
@@ -178,6 +208,46 @@
       }
       return result;
     }
+  }
+
+  function reduce(arr, cb, memo, context) {
+    if (!(arr && cb)) return;
+    for (let i = 0, len = arr.length; i < len; i++) {
+      memo = cb.call(context, memo, arr[i], i, arr);
+    }
+    return memo;
+  }
+
+  // ownerDocument是Node对象的一个属性。返回的是某个元素的根节点文档对象，即document 对象
+  // documentElement是document对象的属性，返回的是文档根节点。
+  function isDom(value) {
+    return typeof value === 'object'
+        && typeof value.nodeType === 'number'
+        && typeof value.ownerDocument === 'object'
+  }
+
+  const primitiveKey = '__ec_primitive__';
+
+  function isPrimitive(obj) {
+    return obj[primitiveKey];
+  }
+
+  function clone(source) {
+    if (source == null || typeof source !== 'object') {
+      return source;
+    }
+
+    let result = source;
+    const typeStr = objToString.call(source);
+    if (typeStr === '[object Array]') {
+      if (!isPrimitive(source)) ;
+    } else if (TYPED_ARRAY[typeStr]) {
+      if (!isPrimitive(source)) ;
+    } else if (BUILTIN_OBJECT[typeStr]) {
+      if (!isPrimitive(source) && !isDom(source)) ;
+    }
+
+    return result;
   }
 
   // console.error('这里的declear const wx: 用的真是太好了')
@@ -1152,6 +1222,22 @@
           || isNotAroundZero(this.skewX)
           || isNotAroundZero(this.skewY);
     }
+
+    static initDefaultProps = (function () {
+      const proto = Transformable.prototype;
+      proto.scaleX =
+      proto.scaleY =
+      proto.globalScaleRatio = 1;
+      proto.x =
+      proto.y =
+      proto.originX =
+      proto.originY =
+      proto.skewX =
+      proto.skewY =
+      proto.rotation =
+      proto.anchorX =
+      proto.anchorY = 0;
+    })()
   }
 
   class Clip {
@@ -1655,7 +1741,6 @@
             },
             set(val) {
               self[xKey] = val;
-              // console.log('pos[0] = ' + val);
             }
           });
           Object.defineProperty(pos, 1, {
@@ -1950,6 +2035,24 @@
       }
       this._xi = x3;
       this._yi = y3;
+      return this;
+    }
+
+    closePath() {
+      // Add pending point for previous path.
+      this._drawPendingPt();
+
+      this.addData(CMD.Z);
+
+      const ctx = this._ctx;
+      const x0 = this._x0;
+      const y0 = this._y0;
+      if (ctx) {
+          ctx.closePath();
+      }
+
+      this._xi = x0;
+      this._yi = y0;
       return this;
     }
 
@@ -2252,6 +2355,32 @@
       this._rect = rect;
 
       return rect;
+    }
+
+    // 自己定义一个形状，如星
+    static extend(defaultProps) {
+      class Sub extends Path {
+        getDefaultStyle() {
+          return clone(defaultProps.style);
+        }
+
+        getDefaultShape() {
+          return clone(defaultProps.shape);
+        }
+
+        constructor(opts) {
+          super(opts);
+          defaultProps.init && defaultProps.init.call(this, opts);
+        }
+      }
+
+      for (let key in defaultProps) {
+        if (typeof defaultProps[key] === 'function') {
+          Sub.prototype[key] = defaultProps[key];
+        }
+      }
+
+      return Sub;
     }
 
     static initDefaultProps = (function () {
@@ -3314,6 +3443,7 @@
   exports.Line = Line;
   exports.LineShape = LineShape;
   exports.LinearGradient = LinearGradient;
+  exports.Path = Path;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
   exports.init = init;

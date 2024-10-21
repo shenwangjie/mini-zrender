@@ -1,6 +1,36 @@
 
 const protoKey = '__proto__';
 
+const BUILTIN_OBJECT = reduce([
+  'Function',
+  'RegExp',
+  'Date',
+  'Error',
+  'CanvasGradient',
+  'CanvasPattern',
+  // node-canvas
+  'Image',
+  'Canvas'
+], (obj, val) => {
+  obj['[object ' + val + ']'] = true;
+  return obj;
+}, {});
+
+const TYPED_ARRAY = reduce([
+  'Int8',
+  'Uint8',
+  'Uint8Clamped',
+  'Int16',
+  'Uint16',
+  'Int32',
+  'Uint32',
+  'Float32',
+  'Float64'
+], (obj, val) => {
+  obj['object ' + val + 'Array]'] = true;
+  return obj;
+}, {});
+
 const objToString = Object.prototype.toString;
 
 const arrayProto = Array.prototype;
@@ -173,4 +203,50 @@ export function map(arr, cb, context) {
     }
     return result;
   }
+}
+
+export function reduce(arr, cb, memo, context) {
+  if (!(arr && cb)) return;
+  for (let i = 0, len = arr.length; i < len; i++) {
+    memo = cb.call(context, memo, arr[i], i, arr);
+  }
+  return memo;
+}
+
+// ownerDocument是Node对象的一个属性。返回的是某个元素的根节点文档对象，即document 对象
+// documentElement是document对象的属性，返回的是文档根节点。
+export function isDom(value) {
+  return typeof value === 'object'
+      && typeof value.nodeType === 'number'
+      && typeof value.ownerDocument === 'object'
+}
+
+const primitiveKey = '__ec_primitive__';
+
+export function isPrimitive(obj) {
+  return obj[primitiveKey];
+}
+
+export function clone(source) {
+  if (source == null || typeof source !== 'object') {
+    return source;
+  }
+
+  let result = source;
+  const typeStr = objToString.call(source);
+  if (typeStr === '[object Array]') {
+    if (!isPrimitive(source)) {
+      
+    }
+  } else if (TYPED_ARRAY[typeStr]) {
+    if (!isPrimitive(source)) {
+
+    }
+  } else if (BUILTIN_OBJECT[typeStr]) {
+    if (!isPrimitive(source) && !isDom(source)) {
+
+    }
+  }
+
+  return result;
 }

@@ -1,5 +1,5 @@
 import Displayable, { DEFAULT_COMMON_STYLE } from './Displayable';
-import { keys, createObject, defaults, extend } from '../core/util'
+import { keys, createObject, defaults, extend, clone } from '../core/util'
 import { SHAPE_CHANGED_BIT, STYLE_CHANGED_BIT, REDRAW_BIT } from './constants';
 import PathProxy from '../core/PathProxy';
 
@@ -130,6 +130,32 @@ class Path extends Displayable {
     this._rect = rect;
 
     return rect;
+  }
+
+  // 自己定义一个形状，如星星
+  static extend(defaultProps) {
+    class Sub extends Path {
+      getDefaultStyle() {
+        return clone(defaultProps.style);
+      }
+
+      getDefaultShape() {
+        return clone(defaultProps.shape);
+      }
+
+      constructor(opts) {
+        super(opts);
+        defaultProps.init && defaultProps.init.call(this, opts);
+      }
+    }
+
+    for (let key in defaultProps) {
+      if (typeof defaultProps[key] === 'function') {
+        Sub.prototype[key] = defaultProps[key];
+      }
+    }
+
+    return Sub;
   }
 
   static initDefaultProps = (function () {
