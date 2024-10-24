@@ -101,6 +101,14 @@ class Path extends Displayable {
     }
   }
 
+  dirtyShape() {
+    this.__dirty |= SHAPE_CHANGED_BIT;
+    if (this._rect) {
+      this._rect = null;
+    }
+    this.markRedraw();
+  }
+
   getUpdatedPathProxy(inBatch) {
     !this.path && this.createPathProxy();
     this.path.beginPath();
@@ -130,6 +138,10 @@ class Path extends Displayable {
     this._rect = rect;
 
     return rect;
+  }
+
+  shapeChanged() {
+    return !!(this.__dirty & SHAPE_CHANGED_BIT);
   }
 
   // 自己定义一个形状，如星星

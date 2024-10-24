@@ -226,6 +226,42 @@
         && typeof value.ownerDocument === 'object'
   }
 
+  function trim(str) {
+    if (str == null) {
+      return null;
+    } else if (typeof str.trim === 'function') {
+      return str.trim();
+    } else {
+      return str.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+    }
+  }
+
+  /**
+   * Normalize css liked array configuration
+   * e.g.
+   *  3 => [3, 3, 3, 3]
+   *  [4, 2] => [4, 2, 4, 2]
+   *  [4, 3, 2] => [4, 3, 2, 3]
+   */
+  function normalizeCssArray(val) {
+    if (typeof (val) === 'number') {
+      return [val, val, val, val];
+    }
+    const len = val.length;
+    if (len === 2) {
+      return [val[0], val[1], val[0], val[1]];
+    } else if (len === 3) {
+      return [val[0], val[1], val[2], val[1]];
+    }
+    return val;
+  }
+
+  function retrieve2(value0, value1) {
+    return value0 != null
+        ? value0
+        : value1;
+  }
+
   const primitiveKey = '__ec_primitive__';
 
   function isPrimitive(obj) {
@@ -1073,8 +1109,19 @@
     return [1, 0, 0, 1, 0, 0];
   }
 
+  // 复制
+  function copy(out, m) {
+    out[0] = m[0];
+    out[1] = m[1];
+    out[2] = m[2];
+    out[3] = m[3];
+    out[4] = m[4];
+    out[5] = m[5];
+    return out;
+  }
+
   // 旋转变换
-  function rotation(out, a, rad, pivot) {
+  function rotation(out, a, rad, pivot = [0, 0]) {
     const aa = a[0];
     const ac = a[2];
     const atx = a[4];
@@ -1130,16 +1177,28 @@
     
     // 更新全局的transform（position等等）
     updateTransform() {
-      // const parentTransform = this.parent && this.parent.transform;
+      const parentTransform = this.parent && this.parent.transform;
       const needLocalTransform = this.needLocalTransform();
 
       let m = this.transform;
+      if (!(needLocalTransform || parentTransform)) {
+        if (m) {
+          this.invTransform = null;
+        }
+        return;
+      }
 
       m = m || create();
 
       if (needLocalTransform) {
         this.getLocalTransform(m);
-      } 
+      }
+
+      if (parentTransform) {
+        if (needLocalTransform) ; else {
+          copy(m, parentTransform);
+        }
+      }
 
       // 保存矩阵变换
       this.transform = m;
@@ -1775,6 +1834,7 @@
     blend: 'source-over'
   };
 
+  DEFAULT_COMMON_STYLE$1[STYLE_MAGIC_KEY] = true;
   class Displayable extends Element {
 
     constructor(props = null) {
@@ -1790,6 +1850,10 @@
 
     innerBeforeBrush() {}
     innerAfterBrush() {}
+
+    styleChanged() {
+      return !!(this.__dirty && SHAPE_CHANGED_BIT);
+    }
 
     useStyle(obj) {
       if (!obj[STYLE_MAGIC_KEY]) {
@@ -1815,6 +1879,10 @@
 
     attrKV(key, value) {
       super.attrKV(key, value);
+    }
+
+    styleUpdated() {
+      this.__dirty &= ~STYLE_CHANGED_BIT;
     }
 
     static initDefaultProps = (function () {
@@ -1881,6 +1949,21 @@
     }
   }
 
+  let dpr = 1;
+
+  // 如果在浏览器环境中
+  if (env.hasGlobalWindow) {
+    dpr = Math.max(
+      window.devicePixelRatio
+      || (window.screen && window.screen.deviceXDPI / window.screen.logicalXDPI)
+      || 1, 1
+    );
+    // deviceXDPI 返回显示屏幕的每英寸水平点数。
+    // logicalXDPI 返回显示屏幕每英寸的水平方向的常规点数。
+  }
+  // retina 屏幕优化
+  const devicePixelRatio = dpr;
+
   const hasTypedArray = typeof Float32Array !== 'undefined';
 
   const CMD = {
@@ -1926,6 +2009,11 @@
     }
 
     setScale(sx, sy, segmentIgnoreThreshold) {
+      segmentIgnoreThreshold = segmentIgnoreThreshold || 0;
+      if (segmentIgnoreThreshold > 0) {
+        this._ux = mathAbs(segmentIgnoreThreshold / devicePixelRatio / sx) || 0;
+        this._uy = mathAbs(segmentIgnoreThreshold / devicePixelRatio / sy) || 0;
+      }
     }
 
     setDPR(dpr) {
@@ -2326,6 +2414,14 @@
       }
     }
 
+    dirtyShape() {
+      this.__dirty |= SHAPE_CHANGED_BIT;
+      if (this._rect) {
+        this._rect = null;
+      }
+      this.markRedraw();
+    }
+
     getUpdatedPathProxy(inBatch) {
       !this.path && this.createPathProxy();
       this.path.beginPath();
@@ -2357,7 +2453,11 @@
       return rect;
     }
 
-    // 自己定义一个形状，如星
+    shapeChanged() {
+      return !!(this.__dirty & SHAPE_CHANGED_BIT);
+    }
+
+    // 自己定义一个形状，如星星
     static extend(defaultProps) {
       class Sub extends Path {
         getDefaultStyle() {
@@ -2531,6 +2631,32 @@
   Polyline.prototype.type = 'polyline';
 
   /**
+   * 多边形
+   */
+
+  class PolygonShape {
+    points = null
+    smooth = 0
+    smoothConstraint = null
+  }
+
+  class Polygon extends Path {
+    constructor(opts) {
+      super(opts);
+    }
+
+    getDefaultShape() {
+      return new PolygonShape();
+    }
+
+    buildPath(ctx, shape) {
+      buildPath(ctx, shape, true);
+    }
+  }
+
+  Polygon.prototype.type = 'polygon';
+
+  /**
    * 圆形
    */
 
@@ -2612,6 +2738,459 @@
   }
 
   Line.prototype.type = 'line';
+
+  const DEFAULT_FONT_SIZE = 12;
+  const DEFAULT_FONT_FAMILY = 'sans-serif';
+  const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px ${DEFAULT_FONT_FAMILY}`;
+  const platformApi = {
+    createCanvas() {
+      return typeof document !== 'undefined' 
+      && document.createElement('canvas');
+    },
+
+    measureText: (function() {
+      let _ctx;
+      let _cachedFont;
+      return (text, font = undefined) => {
+        if (!_ctx) {
+          const canvas = platformApi.createCanvas();
+          _ctx = canvas && canvas.getContext('2d');
+        }
+        if (_ctx) {
+          if (_cachedFont !== font) {
+            _cachedFont = _ctx.font = font || DEFAULT_FONT;
+          }
+          return _ctx.measureText(text);
+        } 
+      }
+    })(),
+  };
+
+  class Entry {
+    value
+
+    constructor(val) {
+      this.value = val;
+    }
+  }
+
+  class LinkedList {
+    _len = 0
+
+    len() {
+      return this._len;
+    }
+
+    insertEntry(entry) {
+      if (!this.head) {
+        this.head = this.tail = entry;
+      }
+      this._len++;
+    }
+  }
+
+  class LRU {
+    _list = new LinkedList()
+    _maxSize = 10
+    _map = {}
+    
+    constructor(maxSize) {
+      this._maxSize = maxSize;
+    }
+
+    get(key) {
+      this._map[key];
+      this._list;
+    }
+
+    put(key, value) {
+      const list = this._list;
+      const map = this._map;
+      let removed = null;
+      if (map[key] == null) {
+        const len = list.len();
+        let entry = this._lastRemovedEntry;
+
+        if (len >= this._maxSize && len > 0) ;
+
+        if (entry) ; else {
+          entry = new Entry(value);
+        }
+        entry.key = key;
+        list.insertEntry(entry);
+        map[key] = entry;
+      }
+
+      return removed;
+    }
+  }
+
+  let textWidthCache = {};
+
+  function getWidth(text, font) {
+    font = font || DEFAULT_FONT;
+    let cacheOfFont = textWidthCache[font];
+    if (!cacheOfFont) {
+      cacheOfFont = textWidthCache[font] = new LRU(500);
+    }
+    let width = cacheOfFont.get(text);
+    if (width == null) { // undefined == null
+      width = platformApi.measureText(text, font).width;
+      cacheOfFont.put(text, width);
+    }
+
+    return width;
+  }
+
+  function getLineHeight(font) {
+    return getWidth('国', font);
+  }
+
+  function adjustTextY(y, height, verticalAlign) {
+    if (verticalAlign === 'middle') {
+      y -= height / 2;
+    } else if (verticalAlign === 'bottom') {
+      y -= height;
+    }
+    return y;
+  }
+
+  const DEFAULT_TSPAN_STYLE = defaults({
+    strokeFirst: true,
+    font: DEFAULT_FONT,
+    x: 0,
+    y: 0,
+    textAlign: 'left',
+    textBaseline: 'top',
+    miterLimit: 2
+  }, DEFAULT_PATH_STYLE);
+
+  class TSpan extends Displayable {
+    createStyle(obj) {
+      return createObject(DEFAULT_TSPAN_STYLE, obj);
+    }
+
+    hasStroke() {
+      const style = this.style;
+      const stroke = style.stroke;
+      return stroke != null && stroke !== 'none' && style.lineWidth > 0;
+    }
+
+    static initDefaultProps = (function () {
+      const tspanProto = TSpan.prototype;
+      tspanProto.dirtyRectTolerance = 10;
+    })()
+  }
+
+  TSpan.prototype.type = 'tspan';
+
+  function parsePlainText(text, style) {
+    text != null && (text += '');
+
+    style.overflow;
+    style.padding;
+    const font = style.font;
+    const calculatedLineHeight = getLineHeight(font);
+    const lineHeight = retrieve2(style.lineHeight, calculatedLineHeight);
+    !!(style.backgroundColor);
+    style.lineOverflow === 'truncate';
+
+    let width = style.width;
+    let lines;
+    if (width != null) ; else {
+      lines = text ? text.split('\n') : [];
+    }
+
+    const contentHeight = lines.length * lineHeight;
+    const height = retrieve2(style.height, contentHeight); // height
+
+    let outerHeight = height;
+    let contentWidth = 0;
+    for (let i = 0; i < lines.length; i++) {
+      contentWidth = Math.max(getWidth(lines[i], font), contentWidth);
+    }
+    if (width == null) {
+      width = contentWidth;
+    } // width
+
+    let outerWidth = contentWidth;
+
+    return {
+      lines: lines,
+      height: height,
+      outerWidth: outerWidth,
+      outerHeight: outerHeight,
+      lineHeight: lineHeight,
+      calculatedLineHeight: calculatedLineHeight,
+      contentWidth: contentWidth,
+      contentHeight: contentHeight,
+      width: width
+    };
+  }
+
+  const DEFAULT_RICH_TEXT_COLOR = {
+    fill: '#000'
+  };
+
+  class ZRText extends Displayable {
+    _defaultStyle = DEFAULT_RICH_TEXT_COLOR
+    _children = []
+
+    constructor(opts) {
+      super();
+      this.attr(opts);
+    }
+
+    childrenRef() {
+      return this._children;
+    }
+
+    update() {
+      super.update();
+
+      if (this.styleChanged()) {
+        this._updateSubTexts();
+      }
+
+      for (let i = 0; i < this._children.length; i++){
+        const child = this._children[i];
+        child.zlevel = this.zlevel;
+        child.z = this.z;
+        child.z2 = this.z2;
+        child.culling = this.culling;
+        child.cursor = this.cursor;
+        child.invisible = this.invisible;
+      }
+    }
+
+    getLocalTransform(m) {
+      const innerTransformable = this.innerTransformable;
+      return innerTransformable
+          ? innerTransformable.getLocalTransform(m)
+          : super.getLocalTransform(m);
+    }
+
+    _updatePlainTexts() {
+      const style = this.style;
+      const textFont = style.font || DEFAULT_FONT;
+      style.padding;
+
+      const text = getStyleText(style);
+      const contentBlock = parsePlainText(text, style);
+      needDrawBackground(style);
+      const bgColorDrawn = !!(style.backgroundColor);
+      const textLines = contentBlock.lines;
+      const lineHeight = contentBlock.lineHeight;
+
+      const defaultStyle = this._defaultStyle;
+
+      const baseX = style.x || 0;
+      const baseY = style.y || 0;
+      const textAlign = style.align || defaultStyle.align || 'left';
+      const verticalAlign = style.verticalAlign || defaultStyle.verticalAlign || 'top';
+
+      let textX = baseX;
+      let textY = adjustTextY(baseY, contentBlock.contentHeight, verticalAlign);
+
+      textY += lineHeight / 2;
+      let useDefaultFill = false;
+      const textFill = getFill(
+        'fill' in style
+            ? style.fill
+            : (useDefaultFill = true, defaultStyle.fill)
+      );
+      const textStroke = getStroke(
+        'stroke' in style 
+              ? style.stroke
+              : (!bgColorDrawn && (!defaultStyle.autoStroke || useDefaultFill))
+              ? (defaultStyle.stroke)
+              : null
+      );
+
+      style.textShadowBlur > 0;
+
+      style.width != null
+          && (style.overflow === 'truncate' || style.overflow === 'break' || style.overflow === 'breakAll');
+
+      for (let i = 0; i < textLines.length; i++) {
+        const el = this._getOrCreateChild(TSpan);
+        const subElStyle = el.createStyle();
+        el.useStyle(subElStyle);
+        subElStyle.text = textLines[i];
+        subElStyle.x = textX;
+        subElStyle.y = textY;
+
+        if (textAlign) {
+          subElStyle.textAlign = textAlign;
+        }
+        subElStyle.textBaseline = 'middle';
+        subElStyle.opacity = style.opacity;
+        subElStyle.strokeFirst = true;
+
+        subElStyle.stroke = textStroke;
+        subElStyle.fill = textFill;
+
+        subElStyle.font = textFont;
+        setSeparateFont(subElStyle, style);
+
+        textY += lineHeight;
+      }
+    }
+
+    _updateSubTexts() {
+      this._childCursor = 0;
+
+      normalizeTextStyle(this.style);
+      this.style.rich
+          ? console.log('not do this')
+          : this._updatePlainTexts();
+
+      this._children.length = this._childCursor;
+
+      this.styleUpdated();
+    }
+
+    static makeFont(style) { 
+      console.error('方法前面不加static就会报错');
+      let font = '';
+      if (hasSeparateFont(style)) ;
+      return font && trim(font) || style.textFont || style.font;
+    }
+
+    _getOrCreateChild(Ctor) {
+      let child = this._children[this._childCursor];
+      if (!child || !(child instanceof Ctor)) {
+        child = new Ctor();
+      }
+      this._children[this._childCursor++] = child;
+      child.__zr = this.__zr;
+      child.parent = this;
+      return child;
+    }
+
+    updateTransform() {
+      const innerTransformable = this.innerTransformable;
+      if (innerTransformable) ; else {
+        super.updateTransform();
+      }
+    }
+  }
+
+  function normalizeTextStyle(style) {
+    normalizeStyle(style);
+    each(style.rich, normalizeStyle);
+    return style;
+  }
+
+  const VALID_TEXT_ALIGN = { left: true, right: 1, center: 1 };
+  const VALID_TEXT_VERTICAL_ALIGN = { top: 1, bottom: 1, middle: 1 };
+  function normalizeStyle(style) {
+    if (style) {
+      style.font = ZRText.makeFont(style);
+      let textAlign = style.align;
+      textAlign === 'middle' && (textAlign = 'center');
+      style.align = (
+        textAlign == null || VALID_TEXT_ALIGN[textAlign]
+      ) ? textAlign : 'left'; // center || left
+
+      let verticalAlign = style.verticalAlign;
+      verticalAlign === 'center' && (verticalAlign = 'middle');
+      style.verticalAlign = (
+        verticalAlign == null || VALID_TEXT_VERTICAL_ALIGN[verticalAlign]
+      ) ? verticalAlign : 'top'; // middle || top
+
+      const textPadding = style.padding;
+      if (textPadding) {
+        style.padding = normalizeCssArray(textPadding);
+      }
+    }
+  }
+
+  function hasSeparateFont(style) {
+    return style.fontSize != null || style.fontFamily || style.fontWeight;
+  }
+
+  function getStyleText(style) {
+    let text = style.text;
+    text != null && (text += ''); // 转化字符串
+    return text;
+  }
+
+  function needDrawBackground(style) {
+    return !!(
+      style.backgroundColor
+      || style.lineHeight
+      || (style.borderWidth && style.borderColor)
+    );
+  }
+
+  function getFill(fill) {
+    return (fill == null || fill === 'none')
+        ? null
+        : (fill.image || fill.colorStops)
+        ? '#000'
+        : fill;
+  }
+
+  function getStroke(stroke, lineWidth) {
+    return (stroke == null || lineWidth <= 0 || stroke === 'transparent' || stroke === 'none') 
+        ? null
+        : (stroke.image || stroke.colorStops)
+        ? '#000'
+        : stroke;
+  }
+
+  const FONT_PARTS = ['fontStyle', 'fontWeight', 'fontSize', 'fontFamily'];
+  function setSeparateFont(targetStyle, sourceStyle) {
+    for (let i = 0; i < FONT_PARTS.length; i++) {
+      const fontProp = FONT_PARTS[i];
+      const val = sourceStyle[fontProp];
+      if (val != null) {
+        targetStyle[fontProp] = val;
+      }
+    }
+  }
+
+  class CompoundPath extends Path {
+    _updatePathDirty() {
+      const paths = this.shape.paths;
+      let dirtyPath = this.shapeChanged();
+      for (let i = 0; i < paths.length; i++) {
+        // Mark as dirty if any subpath is dirty
+        dirtyPath = dirtyPath || paths[i].shapeChanged();
+      }
+      if (dirtyPath) {
+        this.dirtyShape();
+      }
+    }
+
+    // hook
+    beforeBrush() {
+      this._updatePathDirty();
+      const paths = this.shape.paths || [];
+      const scale = this.getGlobalScale();
+      for (let i = 0; i < paths.length; i++) {
+        if (!paths[i].path) {
+          paths[i].createPathProxy();
+        }
+        paths[i].path.setScale(scale[0], scale[1], paths[i].segmentIgnoreThreshold);
+      }
+    }
+
+    buildPath(ctx, shape) {
+      const paths = shape.paths || [];
+      for (let i = 0; i < paths.length; i++) {
+        paths[i].buildPath(ctx, paths[i].shape, true);
+      }
+    }
+
+    afterBrush() {
+      const paths = this.shape.paths || [];
+      for (let i = 0; i < paths.length; i++) {
+        paths[i].pathUpdated();
+      }
+    }
+  }
 
   class Group extends Element {
     isGroup = true
@@ -2739,34 +3318,6 @@
     return canvasGradient;
   }
 
-  let dpr = 1;
-
-  // 如果在浏览器环境中
-  if (env.hasGlobalWindow) {
-    dpr = Math.max(
-      window.devicePixelRatio
-      || (window.screen && window.screen.deviceXDPI / window.screen.logicalXDPI)
-      || 1, 1
-    );
-    // deviceXDPI 返回显示屏幕的每英寸水平点数。
-    // logicalXDPI 返回显示屏幕每英寸的水平方向的常规点数。
-  }
-  // retina 屏幕优化
-  const devicePixelRatio = dpr;
-
-  const platformApi = {
-    createCanvas() {
-      return typeof document !== 'undefined' 
-      && document.createElement('canvas');
-    },
-
-    measureText: (function() {
-      return (text, font = undefined) => {
-        
-      }
-    })(),
-  };
-
   function createDom(id, painter, dpr) {
     const newDom = platformApi.createCanvas();
     const width = painter.getWidth();
@@ -2880,6 +3431,7 @@
   }
 
   const DRAW_TYPE_PATH = 1;
+  const DRAW_TYPE_TEXT = 3;
 
   const pathProxyForDraw = new PathProxy(true);
 
@@ -3049,6 +3601,16 @@
         ctx.beginPath();
       }
       brushPath(ctx, el, style, canBatchPath);
+    } else {
+      if (el instanceof TSpan) {
+        if (scope.lastDrawType !== DRAW_TYPE_TEXT) {
+          forceSetStyle = true;
+          scope.lastDrawType = DRAW_TYPE_TEXT;
+        }
+
+        bindPathAndTextCommonStyle(ctx, el, prevEl, forceSetStyle, scope);
+        brushText(ctx, el, style);
+      }
     }
 
     el.innerAfterBrush();
@@ -3058,6 +3620,37 @@
 
     el.__dirty = 0;
     el._isRendered = true;
+  }
+
+  // draw text element
+  function brushText(ctx, el, style) {
+    let text = style.text;
+
+    text != null && (text += '');
+
+    if (text) {
+      ctx.font = style.font || DEFAULT_FONT;
+      ctx.textAlign = style.textAlign;
+      ctx.textBaseline = style.textBaseline;
+      if (ctx.setLineDash && style.lineDash) ;
+
+      console.error('这个strokeFirst先后重要吗');
+      if (style.strokeFirst) {
+        if (styleHasStroke(style)) {
+          ctx.strokeText(text, style.x, style.y);
+        }
+        if (styleHasFill(style)) {
+          ctx.fillText(text, style.x, style.y);
+        }
+      } else {
+        if (styleHasFill(style)) {
+          ctx.fillText(text, style.x, style.y);
+        }
+        if (styleHasStroke(style)) {
+          ctx.strokeText(text, style.x, style.y);
+        }
+      }
+    }
   }
 
   function brushPath(ctx, el, style, inBatch) {
@@ -3439,13 +4032,17 @@
   exports.BezierCurveShape = BezierCurveShape;
   exports.Circle = Circle;
   exports.CircleShape = CircleShape;
+  exports.CompoundPath = CompoundPath;
   exports.Group = Group;
   exports.Line = Line;
   exports.LineShape = LineShape;
   exports.LinearGradient = LinearGradient;
   exports.Path = Path;
+  exports.Polygon = Polygon;
+  exports.PolygonShape = PolygonShape;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
+  exports.Text = ZRText;
   exports.init = init;
   exports.path = path;
   exports.registerPainter = registerPainter;

@@ -3,6 +3,8 @@ import { SHAPE_CHANGED_BIT } from '../graphic/constants.js'
 import Path from '../graphic/Path.js';
 import { getLineDash } from '../canvas/dashStyle.js'
 import { getCanvasGradient } from './helper.js';
+import TSPan from '../graphic/TSpan.js';
+import { DEFAULT_FONT } from '../core/platform.js';
 
 const DRAW_TYPE_PATH = 1;
 const DRAW_TYPE_IMAGE = 2;
@@ -177,6 +179,16 @@ export function brush(ctx, el, scope, isLast) {
       ctx.beginPath();
     }
     brushPath(ctx, el, style, canBatchPath);
+  } else {
+    if (el instanceof TSPan) {
+      if (scope.lastDrawType !== DRAW_TYPE_TEXT) {
+        forceSetStyle = true;
+        scope.lastDrawType = DRAW_TYPE_TEXT;
+      }
+
+      bindPathAndTextCommonStyle(ctx, el, prevEl, forceSetStyle, scope);
+      brushText(ctx, el, style);
+    }
   }
 
   el.innerAfterBrush();
@@ -186,6 +198,46 @@ export function brush(ctx, el, scope, isLast) {
 
   el.__dirty = 0;
   el._isRendered = true;
+}
+
+// draw text element
+function brushText(ctx, el, style) {
+  let text = style.text;
+
+  text != null && (text += '');
+
+  if (text) {
+    ctx.font = style.font || DEFAULT_FONT;
+    ctx.textAlign = style.textAlign;
+    ctx.textBaseline = style.textBaseline;
+
+    let lineDash;
+    let lineDashOffset;
+    if (ctx.setLineDash && style.lineDash) {}
+    if (lineDash) {}
+
+    console.error('这个strokeFirst先后重要吗');
+    if (style.strokeFirst) {
+      if (styleHasStroke(style)) {
+        ctx.strokeText(text, style.x, style.y);
+      }
+      if (styleHasFill(style)) {
+        ctx.fillText(text, style.x, style.y);
+      }
+    } else {
+      if (styleHasFill(style)) {
+        ctx.fillText(text, style.x, style.y);
+      }
+      if (styleHasStroke(style)) {
+        ctx.strokeText(text, style.x, style.y);
+      }
+    }
+
+    if (lineDash) {
+      // remove lineDash
+      ctx.setLineDash([]);
+    }
+  }
 }
 
 function brushPath(ctx, el, style, inBatch) {

@@ -6,8 +6,24 @@ export function create() {
   return [1, 0, 0, 1, 0, 0];
 }
 
+// 初始化
+export function identity() {
+  return [1, 0, 0, 1, 0, 0];
+}
+
+// 复制
+export function copy(out, m) {
+  out[0] = m[0];
+  out[1] = m[1];
+  out[2] = m[2];
+  out[3] = m[3];
+  out[4] = m[4];
+  out[5] = m[5];
+  return out;
+}
+
 // 旋转变换
-export function rotation(out, a, rad, pivot) {
+export function rotation(out, a, rad, pivot = [0, 0]) {
   const aa = a[0];
   const ac = a[2];
   const atx = a[4];

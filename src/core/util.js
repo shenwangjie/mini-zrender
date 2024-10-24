@@ -221,6 +221,42 @@ export function isDom(value) {
       && typeof value.ownerDocument === 'object'
 }
 
+export function trim(str) {
+  if (str == null) {
+    return null;
+  } else if (typeof str.trim === 'function') {
+    return str.trim();
+  } else {
+    return str.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+  }
+}
+
+/**
+ * Normalize css liked array configuration
+ * e.g.
+ *  3 => [3, 3, 3, 3]
+ *  [4, 2] => [4, 2, 4, 2]
+ *  [4, 3, 2] => [4, 3, 2, 3]
+ */
+export function normalizeCssArray(val) {
+  if (typeof (val) === 'number') {
+    return [val, val, val, val];
+  }
+  const len = val.length;
+  if (len === 2) {
+    return [val[0], val[1], val[0], val[1]];
+  } else if (len === 3) {
+    return [val[0], val[1], val[2], val[1]];
+  }
+  return val;
+}
+
+export function retrieve2(value0, value1) {
+  return value0 != null
+      ? value0
+      : value1;
+}
+
 const primitiveKey = '__ec_primitive__';
 
 export function isPrimitive(obj) {

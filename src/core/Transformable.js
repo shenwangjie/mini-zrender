@@ -12,16 +12,33 @@ class Transformable {
   
   // 更新全局的transform（position等等）
   updateTransform() {
-    // const parentTransform = this.parent && this.parent.transform;
+    const parentTransform = this.parent && this.parent.transform;
     const needLocalTransform = this.needLocalTransform();
 
     let m = this.transform;
+    if (!(needLocalTransform || parentTransform)) {
+      if (m) {
+        matrix.identity();
+        this.invTransform = null;
+      }
+      return;
+    }
 
     m = m || matrix.create();
 
     if (needLocalTransform) {
       this.getLocalTransform(m)
-    } 
+    } else {
+      matrix.identity();
+    }
+
+    if (parentTransform) {
+      if (needLocalTransform) {
+
+      } else {
+        matrix.copy(m, parentTransform);
+      }
+    }
 
     // 保存矩阵变换
     this.transform = m;

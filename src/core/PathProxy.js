@@ -1,6 +1,7 @@
 import { fromArc } from './bbox';
 import BoundingRect from './BoundingRect';
 import * as vec2 from './vector';
+import {devicePixelRatio as dpr} from '../config';
 
 const hasTypedArray = typeof Float32Array !== 'undefined';
 
@@ -50,6 +51,10 @@ export default class PathProxy {
 
   setScale(sx, sy, segmentIgnoreThreshold) {
     segmentIgnoreThreshold = segmentIgnoreThreshold || 0;
+    if (segmentIgnoreThreshold > 0) {
+      this._ux = mathAbs(segmentIgnoreThreshold / dpr / sx) || 0;
+      this._uy = mathAbs(segmentIgnoreThreshold / dpr / sy) || 0;
+    }
   }
 
   setDPR(dpr) {
