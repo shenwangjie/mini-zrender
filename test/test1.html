@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <style>
+    .bottom {
+                background: yellow;
+                width: 100px;
+                height: 100px;
+            }
+            
+            .top {
+                width: 100px;
+                height: 100px;
+                position: absolute;
+                top: 0;
+                left: 0;
+                z-index: 100;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                 /*不再监听当前图层的鼠标事件,而去监听下一层中元素的鼠标事件*/
+                pointer-events: none; 
+
+            }
+            .top b{
+                display:inline-block;
+                margin: 0 auto;
+                 /*子元素修改pointer-events，允许触发鼠标事件*/
+                pointer-events:auto;  
+            }
+  </style>
+</head>
+<body>
+  <script>
+    const obj = {
+        aa() {
+            console.log(this.prop);
+        },
+        bb() {
+            obj.aa.call(this);
+        }
+    }
+
+    class A {
+        prop
+
+        constructor(prop) {
+            this.prop = prop;
+        }
+    }
+
+    const a = new A('pp');
+    obj.aa.call(a);
+</script>
+</body>
+</html>
