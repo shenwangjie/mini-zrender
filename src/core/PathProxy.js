@@ -1,4 +1,4 @@
-import { fromArc } from './bbox';
+import { fromArc, fromLine, fromCubic } from './bbox';
 import BoundingRect from './BoundingRect';
 import * as vec2 from './vector';
 import {devicePixelRatio as dpr} from '../config';
@@ -167,6 +167,14 @@ export default class PathProxy {
     return this;
   }
 
+  rect(x, y, w, h) {
+    this._drawPendingPt();
+
+    this._ctx && this._ctx.rect(x, y, w, h);
+    this.addData(CMD.R, x, y, w, h);
+    return this;
+  }
+
   closePath() {
     // Add pending point for previous path.
     this._drawPendingPt();
@@ -223,6 +231,18 @@ export default class PathProxy {
               yi = y;
             }
             break;
+        case CMD.C: 
+            const x1 = data[i++];
+            const y1 = data[i++];
+            const x2 = data[i++];
+            const y2 = data[i++];
+            const x3 = data[i++];
+            const y3 = data[i++];
+
+            ctx.bezierCurveTo(x1, y1, x2, y2, x3, y3);
+            xi = x3;
+            yi = y3;
+          break;
         case CMD.A:
             const cx = data[i++];
             const cy = data[i++];
@@ -245,6 +265,17 @@ export default class PathProxy {
 
             xi = mathCos(endAngle) * rx + cx;
             yi = mathSin(endAngle) * ry + cy;
+            break;
+        case CMD.R:
+            x0 = xi = data[i];
+            y0 = yi = data[i + 1];
+
+            x = data[i++];
+            y = data[i++];
+            const width = data[i++];
+            const height = data[i++];
+
+            ctx.rect(x, y, width, height);
             break;
       }
     }
@@ -326,6 +357,19 @@ export default class PathProxy {
           max2[0] = x0;
           max2[1] = y0;
           break;
+        case CMD.L:
+          fromLine(xi, yi, data[i], data[i + 1], min2, max2);
+          xi = data[i++];
+          yi = data[i++];
+          break;
+        case CMD.C:
+          fromCubic(
+            xi, yi, data[i++], data[i++], data[i++], data[i++], data[i], data[i + 1],
+            min2, max2
+          );
+          xi = data[i++];
+          yi = data[i++];
+          break;
         case CMD.A: 
           const cx = data[i++];
           const cy = data[i++];
@@ -344,6 +388,17 @@ export default class PathProxy {
 
           xi = mathCos(endAngle) * rx + cx;
           yi = mathSin(endAngle) * ry + cy;
+          break;
+        case CMD.R:
+          x0 = xi = data[i++];
+          y0 = yi = data[i++];
+          const width = data[i++];
+          const height = data[i++];
+          fromLine(x0, y0, x0 + width, y0 + height, min2, max2);
+          break;
+        case CMD.Z:
+          xi = x0;
+          yi = y0;
           break;
       }
 

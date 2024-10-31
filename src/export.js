@@ -5,6 +5,8 @@ export {default as Polyline, PolylineShape} from './graphic/shape/Polyline';
 export {default as Polygon, PolygonShape} from './graphic/shape/Polygon';
 export {default as Circle, CircleShape} from './graphic/shape/Circle';
 export {default as Line, LineShape} from './graphic/shape/Line';
+export {default as Rect, RectShape} from './graphic/shape/Rect';
+export {default as Sector, SectorShape} from './graphic/shape/Sector';
 export {default as Text} from './graphic/Text';
 export {default as CompoundPath} from './graphic/CompoundPath';
 

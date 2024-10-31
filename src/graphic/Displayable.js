@@ -1,3 +1,4 @@
+import { extend } from '../core/util';
 import Element from '../Element'
 import { REDRAW_BIT, SHAPE_CHANGED_BIT, STYLE_CHANGED_BIT } from './constants'
 
@@ -31,6 +32,16 @@ class Displayable extends Element {
 
   styleChanged() {
     return !!(this.__dirty && SHAPE_CHANGED_BIT);
+  }
+
+  setStyle(keyOrObj, value) {
+    if (typeof keyOrObj === 'string') {
+      this.style[keyOrObj] = value;
+    } else {
+      extend(this.style, keyOrObj);
+    }
+    this.dirtyStyle();
+    return this;
   }
 
   useStyle(obj) {

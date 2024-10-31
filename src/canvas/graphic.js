@@ -216,7 +216,6 @@ function brushText(ctx, el, style) {
     if (ctx.setLineDash && style.lineDash) {}
     if (lineDash) {}
 
-    console.error('这个strokeFirst先后重要吗');
     if (style.strokeFirst) {
       if (styleHasStroke(style)) {
         ctx.strokeText(text, style.x, style.y);

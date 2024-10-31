@@ -13,6 +13,7 @@ const DEFAULT_STROKE_LINE_WIDTH = 2;
 class ZRText extends Displayable {
   _defaultStyle = DEFAULT_RICH_TEXT_COLOR
   _children = []
+  innerTransformable
 
   constructor(opts) {
     super();
@@ -165,13 +166,31 @@ class ZRText extends Displayable {
     return child;
   }
 
+  addSelfToZr(zr) {
+    super.addSelfToZr(zr);
+    for (let i = 0; i < this._children.length; i++) {
+        // Also need mount __zr for case like hover detection.
+        // The case: hover on a label (position: 'top') causes host el
+        // scaled and label Y position lifts a bit so that out of the
+        // pointer, then mouse move should be able to trigger "mouseout".
+        this._children[i].__zr = zr;
+    }
+  }
+
   updateTransform() {
     const innerTransformable = this.innerTransformable;
     if (innerTransformable) {
-
+      innerTransformable.updateTransform();
+      if (innerTransformable.transform) {
+        this.transform = innerTransformable.transform;
+      }
     } else {
       super.updateTransform();
     }
+  }
+
+  setDefaultTextStyle(defaultTextStyle) {
+    this._defaultStyle = defaultTextStyle || DEFAULT_RICH_TEXT_COLOR;
   }
 }
 

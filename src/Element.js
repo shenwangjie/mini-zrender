@@ -1,12 +1,20 @@
 import { REDRAW_BIT } from './graphic/constants'
 import Transformable from './core/Transformable'
-import { mixin, isObject, keys, guid } from './core/util'
+import { mixin, isObject, keys, guid, extend } from './core/util'
 import Animator from './animation/Animator'
 import Eventful from './core/Eventful'
+import BoundingRect from './core/BoundingRect'
+import { calculateTextPosition } from './contain/text'
+
+let tmpBoundingRect = new BoundingRect(0, 0, 0, 0);
+let tmpTextPosCalcRes = {};
+
 class Element {
   id = guid()
 
   animators = []
+
+  _textContent
 
   // parent
 
@@ -36,9 +44,9 @@ class Element {
 
   attrKV(key, value) {
     if (key === 'textConfig') {
-
+      this.setTextConfig(value);
     } else if (key === 'textContent') {
-
+      this.setTextContext(value);
     } else if (key === 'clipPath') {
       
     } else if (key === 'extra') {
@@ -58,10 +66,131 @@ class Element {
       this.updateInnerText();
     }
   }
-
+  // update text content
   updateInnerText(forceUpdate = undefined) {
+    const textEl = this._textContent;
+    if (textEl && (!textEl.ignore || forceUpdate)) {
+      if (!this.textConfig) {
+        this.textConfig = {};
+      }
+      const textConfig = this.textConfig;
+      const isLocal = textConfig.local;
+      const innerTransformable = textEl.innerTransformable;
 
+      let textAlign;
+      let textVerticalAlign;
+
+      let textStyleChanged = false;
+      
+      innerTransformable.copyTransform(textEl);
+
+      if (textConfig.position != null) {
+        let layoutRect = tmpBoundingRect;
+        if (textConfig.layoutRect) {
+
+        } else {
+          layoutRect.copy(this.getBoundingRect());
+        }
+
+        if (!isLocal) {
+          layoutRect.applyTransform(this.transform);
+        }
+
+        if (this.calculateTextPosition) {
+
+        } else {
+          calculateTextPosition(tmpTextPosCalcRes, textConfig, layoutRect);
+        }
+
+        innerTransformable.x = tmpTextPosCalcRes.x;
+        innerTransformable.y = tmpTextPosCalcRes.y;
+
+        textAlign = tmpTextPosCalcRes.align;
+        textVerticalAlign = tmpTextPosCalcRes.verticalAlign;
+        
+      }
+
+      const isInside = textConfig.inside == null
+          ? (typeof textConfig.position === 'string' && textConfig.position.indexOf('inside') >= 0)
+          : textConfig.inside;
+      const innerTextDefaultStyle = this._innerTextDefaultStyle || (this._innerTextDefaultStyle = {});
+
+      let textFill;
+      let textStroke;
+      let autoStroke;
+      if (isInside) {
+        textFill = textConfig.insideFill;
+        textStroke = textConfig.insideStroke;
+
+        if (textFill == null || textFill === 'auto') {
+          textFill = '#fff';
+        }
+        if (textStroke == null || textStroke === 'auto') {
+          textStroke = '#000';
+          autoStroke = true;
+        }
+      }
+      textFill = textFill || '#000';
+
+      if (textFill !== innerTextDefaultStyle.fill
+        || textStroke !== innerTextDefaultStyle.stroke
+        || autoStroke !== innerTextDefaultStyle.autoStroke
+        || textAlign !== innerTextDefaultStyle.align
+        || textVerticalAlign !== innerTextDefaultStyle.verticalAlign
+      ) {
+
+        textStyleChanged = true;
+
+        innerTextDefaultStyle.fill = textFill;
+        innerTextDefaultStyle.stroke = textStroke;
+        innerTextDefaultStyle.autoStroke = autoStroke;
+        innerTextDefaultStyle.align = textAlign;
+        innerTextDefaultStyle.verticalAlign = textVerticalAlign;
+
+        textEl.setDefaultTextStyle(innerTextDefaultStyle);
+      }
+
+      textEl.__dirty != REDRAW_BIT;
+
+      if (textStyleChanged) {
+        textEl.dirtyStyle(true);
+      }
+    }
   }
+
+  getBoundingRect() {
+    return null;
+  }
+
+  setTextConfig(cfg) {
+    if (!this.textConfig) {
+      this.textConfig = {};
+    }
+    extend(this.textConfig, cfg);
+    this.markRedraw();
+  }
+
+  // 设置属性textContent
+  setTextContext(zrT) {
+    const previousTextContent = this._textContent;
+    if (previousTextContent === zrT) {
+      return;
+    }
+
+    if (previousTextContent && previousTextContent !== zrT) {
+
+    }
+
+    zrT.innerTransformable = new Transformable();
+    this._attachComponent(zrT);
+    this._textContent = zrT;
+    this.markRedraw();
+  }
+  // 获取有关联的text content
+  getTextContent() {
+    return this._textContent;
+  }
+
   // 标记重绘
   markRedraw() {
     this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
@@ -71,12 +200,25 @@ class Element {
     }
   }
 
+  _attachComponent(componentEl) {
+    const zr = this.__zr;
+    if (zr) {
+
+    }
+    componentEl.__zr = zr;
+    // componentEl.__hostTarget = this;
+  }
+
   getClipPath() {
     return this._clipPath;
   }
 
   addSelfToZr(zr) {
     this.__zr = zr;
+
+    if (this._textContent) {
+      this._textContent.addSelfToZr(zr);
+    }
   }
 
   animate(key, loop) {

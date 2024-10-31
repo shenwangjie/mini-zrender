@@ -122,6 +122,10 @@ class Transformable {
         || isNotAroundZero(this.skewY);
   }
 
+  copyTransform(source) {
+    copyTransform(this, source);
+  }
+
   static initDefaultProps = (function () {
     const proto = Transformable.prototype;
     proto.scaleX =
@@ -137,6 +141,17 @@ class Transformable {
     proto.anchorX =
     proto.anchorY = 0;
   })()
+}
+
+export const TRANSFORMABLE_PROPS = [
+  'x', 'y', 'originX', 'originY', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY'
+];
+
+export function copyTransform(target, source) {
+  for (let i = 0; i < TRANSFORMABLE_PROPS.length; i++) {
+    const propName = TRANSFORMABLE_PROPS[i];
+    target[propName] = source[propName];
+  }
 }
 
 export default Transformable;

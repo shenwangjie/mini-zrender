@@ -58,6 +58,11 @@ export default class Storage {
       const disp = el;
       this._displayList[this._displayListLen++] = disp;
     }
+
+    const textEl = el.getTextContent();
+    if (textEl) {
+      this._updateAndAddDisplayable(textEl);
+    }
   }
 
   addRoot(el) {

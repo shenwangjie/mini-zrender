@@ -268,7 +268,7 @@
     return obj[primitiveKey];
   }
 
-  function clone(source) {
+  function clone$1(source) {
     if (source == null || typeof source !== 'object') {
       return source;
     }
@@ -969,6 +969,11 @@
         const disp = el;
         this._displayList[this._displayListLen++] = disp;
       }
+
+      const textEl = el.getTextContent();
+      if (textEl) {
+        this._updateAndAddDisplayable(textEl);
+      }
     }
 
     addRoot(el) {
@@ -1165,9 +1170,9 @@
     return out;
   }
 
-  const EPSILON = 5e-5;
-  function isNotAroundZero(val) {
-    return val > EPSILON || val < -EPSILON;
+  const EPSILON$1 = 5e-5;
+  function isNotAroundZero$1(val) {
+    return val > EPSILON$1 || val < -EPSILON$1;
   }
   class Transformable {
 
@@ -1273,13 +1278,17 @@
 
     // 是否需要计算transform
     needLocalTransform() {
-      return isNotAroundZero(this.rotation)
-          || isNotAroundZero(this.x)
-          || isNotAroundZero(this.y)
-          || isNotAroundZero(this.scaleX - 1)
-          || isNotAroundZero(this.scaleY - 1)
-          || isNotAroundZero(this.skewX)
-          || isNotAroundZero(this.skewY);
+      return isNotAroundZero$1(this.rotation)
+          || isNotAroundZero$1(this.x)
+          || isNotAroundZero$1(this.y)
+          || isNotAroundZero$1(this.scaleX - 1)
+          || isNotAroundZero$1(this.scaleY - 1)
+          || isNotAroundZero$1(this.skewX)
+          || isNotAroundZero$1(this.skewY);
+    }
+
+    copyTransform(source) {
+      copyTransform(this, source);
     }
 
     static initDefaultProps = (function () {
@@ -1297,6 +1306,17 @@
       proto.anchorX =
       proto.anchorY = 0;
     })()
+  }
+
+  const TRANSFORMABLE_PROPS = [
+    'x', 'y', 'originX', 'originY', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY'
+  ];
+
+  function copyTransform(target, source) {
+    for (let i = 0; i < TRANSFORMABLE_PROPS.length; i++) {
+      const propName = TRANSFORMABLE_PROPS[i];
+      target[propName] = source[propName];
+    }
   }
 
   class Clip {
@@ -1675,10 +1695,313 @@
     }
   }
 
+  class Point {
+    constructor(x, y) {
+      this.x = x || 0;
+      this.y = y || 0;
+    }
+
+    transform(m) {
+      if (!m) {
+        return;
+      }
+
+      const x = this.x;
+      const y = this.y;
+      this.x = m[0] * x + m[2] * y + m[4];
+      this.y = m[1] * x + m[3] * y + m[5];
+      return this;
+    }
+  }
+
+  const mathMin$2 = Math.min;
+  const mathMax$2 = Math.max;
+
+  const lt = new Point();
+  const rb = new Point();
+  const lb = new Point();
+  const rt = new Point();
+
+  class BoundingRect {
+    x
+    y
+    width
+    height
+
+    constructor(x, y, width, height) {
+      if (width < 0) {
+        x = x + width;
+        width = -width;
+      }
+      if (height < 0) {
+        y = y + height;
+        height = -height;
+      }
+
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+    }
+
+    copy(other) {
+      BoundingRect.copy(this, other);
+    }
+
+    applyTransform(m) {
+      BoundingRect.applyTransform(this, this, m);
+    }
+
+    static copy(target, source) {
+      target.x = source.x;
+      target.y = source.y;
+      target.width = source.width;
+      target.height = source.height;
+    }
+
+    static applyTransform(target, source, m) {
+      lt.x = lb.x = source.x;
+      lt.y = rt.y = source.y;
+      rb.x = rt.x = source.x + source.width;
+      rb.y = lb.y = source.y + source.height;
+
+      lt.transform(m);
+      rt.transform(m);
+      rb.transform(m);
+      lb.transform(m);
+
+      target.x = mathMin$2(lt.x, rb.x, lb.x, rt.x);
+      target.y = mathMin$2(lt.y, rb.y, lb.y, rt.y);
+      const maxX = mathMax$2(lt.x, rb.x, lb.x, rt.x);
+      const maxY = mathMax$2(lt.y, rb.y, lb.y, rt.y);
+      target.width = maxX - target.x;
+      target.height = maxY - target.y;
+    }
+  }
+
+  const DEFAULT_FONT_SIZE = 12;
+  const DEFAULT_FONT_FAMILY = 'sans-serif';
+  const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px ${DEFAULT_FONT_FAMILY}`;
+  const platformApi = {
+    createCanvas() {
+      return typeof document !== 'undefined' 
+      && document.createElement('canvas');
+    },
+
+    measureText: (function() {
+      let _ctx;
+      let _cachedFont;
+      return (text, font = undefined) => {
+        if (!_ctx) {
+          const canvas = platformApi.createCanvas();
+          _ctx = canvas && canvas.getContext('2d');
+        }
+        if (_ctx) {
+          if (_cachedFont !== font) {
+            _cachedFont = _ctx.font = font || DEFAULT_FONT;
+          }
+          return _ctx.measureText(text);
+        } 
+      }
+    })(),
+  };
+
+  class Entry {
+    value
+
+    constructor(val) {
+      this.value = val;
+    }
+  }
+
+  class LinkedList {
+    _len = 0
+
+    len() {
+      return this._len;
+    }
+
+    insertEntry(entry) {
+      if (!this.head) {
+        this.head = this.tail = entry;
+      }
+      this._len++;
+    }
+  }
+
+  class LRU {
+    _list = new LinkedList()
+    _maxSize = 10
+    _map = {}
+    
+    constructor(maxSize) {
+      this._maxSize = maxSize;
+    }
+
+    get(key) {
+      this._map[key];
+      this._list;
+    }
+
+    put(key, value) {
+      const list = this._list;
+      const map = this._map;
+      let removed = null;
+      if (map[key] == null) {
+        const len = list.len();
+        let entry = this._lastRemovedEntry;
+
+        if (len >= this._maxSize && len > 0) ;
+
+        if (entry) ; else {
+          entry = new Entry(value);
+        }
+        entry.key = key;
+        list.insertEntry(entry);
+        map[key] = entry;
+      }
+
+      return removed;
+    }
+  }
+
+  let textWidthCache = {};
+
+  function getWidth(text, font) {
+    font = font || DEFAULT_FONT;
+    let cacheOfFont = textWidthCache[font];
+    if (!cacheOfFont) {
+      cacheOfFont = textWidthCache[font] = new LRU(500);
+    }
+    let width = cacheOfFont.get(text);
+    if (width == null) { // undefined == null
+      width = platformApi.measureText(text, font).width;
+      cacheOfFont.put(text, width);
+    }
+
+    return width;
+  }
+
+  function getLineHeight(font) {
+    return getWidth('国', font);
+  }
+
+  function adjustTextY(y, height, verticalAlign) {
+    if (verticalAlign === 'middle') {
+      y -= height / 2;
+    } else if (verticalAlign === 'bottom') {
+      y -= height;
+    }
+    return y;
+  }
+
+  function calculateTextPosition(out, opts, rect) {
+    const textPosition = opts.position || 'inside';
+    const distance = opts.distance != null ? opts.distance : 5;
+
+    const height = rect.height;
+    const width = rect.width;
+    const halfHeight = height / 2;
+
+    let x = rect.x;
+    let y = rect.y;
+
+    let textAlign = 'left';
+    let textVerticalAlign = 'top';
+
+    if (textPosition instanceof Array) ; else {
+      switch (textPosition) {
+        case 'left':
+          x -= distance;
+          y += halfHeight;
+          textAlign = 'right';
+          textVerticalAlign = 'middle';
+          break;
+        case 'right':
+          x += distance + width;
+          y += halfHeight;
+          textVerticalAlign = 'middle';
+          break;
+        case 'top':
+          x += width / 2;
+          y -= distance;
+          textAlign = 'center';
+          textVerticalAlign = 'bottom';
+          break;
+        case 'bottom':
+          x += width / 2;
+          y += height + distance;
+          textAlign = 'center';
+          break;
+          case 'inside':
+            x += width / 2;
+            y += halfHeight;
+            textAlign = 'center';
+            textVerticalAlign = 'middle';
+            break;
+        case 'insideLeft':
+            x += distance;
+            y += halfHeight;
+            textVerticalAlign = 'middle';
+            break;
+        case 'insideRight':
+            x += width - distance;
+            y += halfHeight;
+            textAlign = 'right';
+            textVerticalAlign = 'middle';
+            break;
+        case 'insideTop':
+            x += width / 2;
+            y += distance;
+            textAlign = 'center';
+            break;
+        case 'insideBottom':
+            x += width / 2;
+            y += height - distance;
+            textAlign = 'center';
+            textVerticalAlign = 'bottom';
+            break;
+        case 'insideTopLeft':
+            x += distance;
+            y += distance;
+            break;
+        case 'insideTopRight':
+            x += width - distance;
+            y += distance;
+            textAlign = 'right';
+            break;
+        case 'insideBottomLeft':
+            x += distance;
+            y += height - distance;
+            textVerticalAlign = 'bottom';
+            break;
+        case 'insideBottomRight':
+            x += width - distance;
+            y += height - distance;
+            textAlign = 'right';
+            textVerticalAlign = 'bottom';
+            break;
+      }
+    }
+
+    out = out || {};
+    out.x = x;
+    out.y = y;
+    out.align = textAlign;
+    out.verticalAlign = textVerticalAlign;
+
+    return out;
+  }
+
+  let tmpBoundingRect = new BoundingRect(0, 0, 0, 0);
+  let tmpTextPosCalcRes = {};
+
   class Element {
     id = guid()
 
     animators = []
+
+    _textContent
 
     // parent
 
@@ -1707,7 +2030,11 @@
     }
 
     attrKV(key, value) {
-      if (key === 'textConfig') ; else if (key === 'textContent') ; else if (key === 'clipPath') ; else if (key === 'extra') ; else {
+      if (key === 'textConfig') {
+        this.setTextConfig(value);
+      } else if (key === 'textContent') {
+        this.setTextContext(value);
+      } else if (key === 'clipPath') ; else if (key === 'extra') ; else {
         this[key] = value;
       }
     }
@@ -1722,10 +2049,123 @@
         this.updateInnerText();
       }
     }
-
+    // update text content
     updateInnerText(forceUpdate = undefined) {
+      const textEl = this._textContent;
+      if (textEl && (!textEl.ignore || forceUpdate)) {
+        if (!this.textConfig) {
+          this.textConfig = {};
+        }
+        const textConfig = this.textConfig;
+        const isLocal = textConfig.local;
+        const innerTransformable = textEl.innerTransformable;
 
+        let textAlign;
+        let textVerticalAlign;
+
+        let textStyleChanged = false;
+        
+        innerTransformable.copyTransform(textEl);
+
+        if (textConfig.position != null) {
+          let layoutRect = tmpBoundingRect;
+          if (textConfig.layoutRect) ; else {
+            layoutRect.copy(this.getBoundingRect());
+          }
+
+          if (!isLocal) {
+            layoutRect.applyTransform(this.transform);
+          }
+
+          if (this.calculateTextPosition) ; else {
+            calculateTextPosition(tmpTextPosCalcRes, textConfig, layoutRect);
+          }
+
+          innerTransformable.x = tmpTextPosCalcRes.x;
+          innerTransformable.y = tmpTextPosCalcRes.y;
+
+          textAlign = tmpTextPosCalcRes.align;
+          textVerticalAlign = tmpTextPosCalcRes.verticalAlign;
+          
+        }
+
+        const isInside = textConfig.inside == null
+            ? (typeof textConfig.position === 'string' && textConfig.position.indexOf('inside') >= 0)
+            : textConfig.inside;
+        const innerTextDefaultStyle = this._innerTextDefaultStyle || (this._innerTextDefaultStyle = {});
+
+        let textFill;
+        let textStroke;
+        let autoStroke;
+        if (isInside) {
+          textFill = textConfig.insideFill;
+          textStroke = textConfig.insideStroke;
+
+          if (textFill == null || textFill === 'auto') {
+            textFill = '#fff';
+          }
+          if (textStroke == null || textStroke === 'auto') {
+            textStroke = '#000';
+            autoStroke = true;
+          }
+        }
+        textFill = textFill || '#000';
+
+        if (textFill !== innerTextDefaultStyle.fill
+          || textStroke !== innerTextDefaultStyle.stroke
+          || autoStroke !== innerTextDefaultStyle.autoStroke
+          || textAlign !== innerTextDefaultStyle.align
+          || textVerticalAlign !== innerTextDefaultStyle.verticalAlign
+        ) {
+
+          textStyleChanged = true;
+
+          innerTextDefaultStyle.fill = textFill;
+          innerTextDefaultStyle.stroke = textStroke;
+          innerTextDefaultStyle.autoStroke = autoStroke;
+          innerTextDefaultStyle.align = textAlign;
+          innerTextDefaultStyle.verticalAlign = textVerticalAlign;
+
+          textEl.setDefaultTextStyle(innerTextDefaultStyle);
+        }
+
+        textEl.__dirty != REDRAW_BIT;
+
+        if (textStyleChanged) {
+          textEl.dirtyStyle(true);
+        }
+      }
     }
+
+    getBoundingRect() {
+      return null;
+    }
+
+    setTextConfig(cfg) {
+      if (!this.textConfig) {
+        this.textConfig = {};
+      }
+      extend(this.textConfig, cfg);
+      this.markRedraw();
+    }
+
+    // 设置属性textContent
+    setTextContext(zrT) {
+      const previousTextContent = this._textContent;
+      if (previousTextContent === zrT) {
+        return;
+      }
+
+      zrT.innerTransformable = new Transformable();
+      this._attachComponent(zrT);
+      this._textContent = zrT;
+      this.markRedraw();
+    }
+    // 获取有关联的text content
+    getTextContent() {
+      return this._textContent;
+    }
+
     // 标记重绘
     markRedraw() {
       this.__dirty |= REDRAW_BIT; // 按位或 如3|5 = 7 0011 | 0101 = 0111
@@ -1735,12 +2175,22 @@
       }
     }
 
+    _attachComponent(componentEl) {
+      const zr = this.__zr;
+      componentEl.__zr = zr;
+      // componentEl.__hostTarget = this;
+    }
+
     getClipPath() {
       return this._clipPath;
     }
 
     addSelfToZr(zr) {
       this.__zr = zr;
+
+      if (this._textContent) {
+        this._textContent.addSelfToZr(zr);
+      }
     }
 
     animate(key, loop) {
@@ -1855,6 +2305,16 @@
       return !!(this.__dirty && SHAPE_CHANGED_BIT);
     }
 
+    setStyle(keyOrObj, value) {
+      if (typeof keyOrObj === 'string') {
+        this.style[keyOrObj] = value;
+      } else {
+        extend(this.style, keyOrObj);
+      }
+      this.dirtyStyle();
+      return this;
+    }
+
     useStyle(obj) {
       if (!obj[STYLE_MAGIC_KEY]) {
         obj = this.createStyle(obj);
@@ -1893,6 +2353,40 @@
     })()
   }
 
+  // 克隆
+  function clone(v) {
+    return [v[0], v[1]];
+  }
+
+  // 相减
+  function sub(out, v1, v2) {
+    out[0] = v1[0] - v2[0];
+    out[1] = v1[1] - v2[1];
+    return out;
+  }
+
+  // 相加
+  function add(out, v1, v2) {
+    out[0] = v1[0] + v2[0];
+    out[1] = v1[1] + v2[1];
+    return out;
+  }
+
+  // 缩放
+  function scale(out, v, s) {
+    out[0] = v[0] * s;
+    out[1] = v[1] * s;
+    return out;
+  }
+
+  // 向量之间距离（勾股定理）
+  function distance(v1, v2) {
+    return Math.sqrt(
+      (v1[0] - v2[0]) * (v1[0] - v2[0])
+      + (v1[1] - v2[1]) * (v1[1] - v2[1])
+    );
+  }
+
   // 求两个向量最小值
   function min$1(out, v1, v2) {
     out[0] = Math.min(v1[0], v2[0]);
@@ -1907,7 +2401,74 @@
     return out;
   }
 
-  const PI2 = Math.PI * 2;
+  const EPSILON = 1e-8;
+
+  const mathSqrt$1 = Math.sqrt;
+
+  function isAroundZero(val) {
+    return val > -EPSILON && val < EPSILON;
+  }
+  function isNotAroundZero(val) {
+    return val > EPSILON || val < -EPSILON;
+  }
+  /**
+   * 计算三次贝塞尔值
+   */
+  function cubicAt(p0, p1, p2, p3, t) {
+    const onet = 1 - t;
+    return onet * onet * (onet * p0 + 3 * t * p1)
+            + t * t * (t * p3 + 3 * onet * p2);
+  }
+
+  /**
+   * 计算三次贝塞尔方程极限值的位置
+   * @return 有效数目
+   */
+  function cubicExtrema(p0, p1, p2, p3, extrema) {
+    const b = 6 * p2 - 12 * p1 + 6 * p0;
+    const a = 9 * p1 + 3 * p3 - 3 * p0 - 9 * p2;
+    const c = 3 * p1 - 3 * p0;
+
+    let n = 0;
+    if (isAroundZero(a)) {
+        if (isNotAroundZero(b)) {
+            const t1 = -c / b;
+            if (t1 >= 0 && t1 <= 1) {
+                extrema[n++] = t1;
+            }
+        }
+    }
+    else {
+        const disc = b * b - 4 * a * c;
+        if (isAroundZero(disc)) {
+            extrema[0] = -b / (2 * a);
+        }
+        else if (disc > 0) {
+            const discSqrt = mathSqrt$1(disc);
+            const t1 = (-b + discSqrt) / (2 * a);
+            const t2 = (-b - discSqrt) / (2 * a);
+            if (t1 >= 0 && t1 <= 1) {
+                extrema[n++] = t1;
+            }
+            if (t2 >= 0 && t2 <= 1) {
+                extrema[n++] = t2;
+            }
+        }
+    }
+    return n;
+  }
+
+  const PI2$1 = Math.PI * 2;
+
+  const mathMin$1 = Math.min;
+  const mathMax$1 = Math.max;
+
+  function fromLine(x0, y0, x1, y1, min, max) {
+    min[0] = mathMin$1(x0, x1);
+    min[1] = mathMin$1(y0, y1);
+    max[0] = mathMax$1(x0, x1);
+    max[1] = mathMax$1(y0, y1);
+  }
 
   function fromArc(x, y, rx, ry, startAngle, endAngle, anticlockwise, min, max) {
     // const vec2Min = vec2.min;
@@ -1916,7 +2477,7 @@
     const diff = Math.abs(startAngle - endAngle);
 
     // 是一个圆
-    if (diff % PI2 < 1e-4 && diff > 1e-4) {
+    if (diff % PI2$1 < 1e-4 && diff > 1e-4) {
       min[0] = x - rx;
       min[1] = y - ry;
       max[0] = x + rx;
@@ -1926,27 +2487,41 @@
 
   }
 
-  class BoundingRect {
-    x
-    y
-    width
-    height
+  const xDim = [];
+  const yDim = [];
+  function fromCubic(
+    x0, y0, x1, y1, x2, y2, x3, y3,
+    min, max
+  ) {
+    const cubicExtrema$1 = cubicExtrema;
+    const cubicAt$1 = cubicAt;
+    let n = cubicExtrema$1(x0, x1, x2, x3, xDim);
+    min[0] = Infinity;
+    min[1] = Infinity;
+    max[0] = -Infinity;
+    max[1] = -Infinity;
 
-    constructor(x, y, width, height) {
-      if (width < 0) {
-        x = x + width;
-        width = -width;
-      }
-      if (height < 0) {
-        y = y + height;
-        height = -height;
-      }
-
-      this.x = x;
-      this.y = y;
-      this.width = width;
-      this.height = height;
+    for (let i = 0; i < n; i++) {
+        const x = cubicAt$1(x0, x1, x2, x3, xDim[i]);
+        min[0] = mathMin$1(x, min[0]);
+        max[0] = mathMax$1(x, max[0]);
     }
+    n = cubicExtrema$1(y0, y1, y2, y3, yDim);
+    for (let i = 0; i < n; i++) {
+        const y = cubicAt$1(y0, y1, y2, y3, yDim[i]);
+        min[1] = mathMin$1(y, min[1]);
+        max[1] = mathMax$1(y, max[1]);
+    }
+
+    min[0] = mathMin$1(x0, min[0]);
+    max[0] = mathMax$1(x0, max[0]);
+    min[0] = mathMin$1(x3, min[0]);
+    max[0] = mathMax$1(x3, max[0]);
+
+    min[1] = mathMin$1(y0, min[1]);
+    max[1] = mathMax$1(y0, max[1]);
+    min[1] = mathMin$1(y3, min[1]);
+    max[1] = mathMax$1(y3, max[1]);
   }
 
   let dpr = 1;
@@ -1981,9 +2556,9 @@
   const min2 = [];
   const max2 = [];
 
-  const mathAbs = Math.abs;
-  const mathCos = Math.cos;
-  const mathSin = Math.sin;
+  const mathAbs$1 = Math.abs;
+  const mathCos$1 = Math.cos;
+  const mathSin$1 = Math.sin;
 
   const tmpAngles = [];
 
@@ -2011,8 +2586,8 @@
     setScale(sx, sy, segmentIgnoreThreshold) {
       segmentIgnoreThreshold = segmentIgnoreThreshold || 0;
       if (segmentIgnoreThreshold > 0) {
-        this._ux = mathAbs(segmentIgnoreThreshold / devicePixelRatio / sx) || 0;
-        this._uy = mathAbs(segmentIgnoreThreshold / devicePixelRatio / sy) || 0;
+        this._ux = mathAbs$1(segmentIgnoreThreshold / devicePixelRatio / sx) || 0;
+        this._uy = mathAbs$1(segmentIgnoreThreshold / devicePixelRatio / sy) || 0;
       }
     }
 
@@ -2077,8 +2652,8 @@
     }
 
     lineTo(x, y) {
-      const dx = mathAbs(x - this._xi);
-      const dy = mathAbs(y - this._yi);
+      const dx = mathAbs$1(x - this._xi);
+      const dy = mathAbs$1(y - this._yi);
       const exceedUnit = dx > this._ux || dy > this._uy;
 
       this.addData(CMD.L, x, y);
@@ -2111,8 +2686,8 @@
 
       this._ctx && this._ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
 
-      this._xi = mathCos(endAngle) * r + cx;
-      this._yi = mathSin(endAngle) * r + cy;
+      this._xi = mathCos$1(endAngle) * r + cx;
+      this._yi = mathSin$1(endAngle) * r + cy;
       return this;
     }
 
@@ -2123,6 +2698,14 @@
       }
       this._xi = x3;
       this._yi = y3;
+      return this;
+    }
+
+    rect(x, y, w, h) {
+      this._drawPendingPt();
+
+      this._ctx && this._ctx.rect(x, y, w, h);
+      this.addData(CMD.R, x, y, w, h);
       return this;
     }
 
@@ -2169,14 +2752,26 @@
           case CMD.L:
               x = data[i++];
               y = data[i++];
-              const dx = mathAbs(x - xi);
-              const dy = mathAbs(y - yi);
+              const dx = mathAbs$1(x - xi);
+              const dy = mathAbs$1(y - yi);
               if (dx > ux || dy > uy) {
                 ctx.lineTo(x, y);
                 xi = x;
                 yi = y;
               }
               break;
+          case CMD.C: 
+              const x1 = data[i++];
+              const y1 = data[i++];
+              const x2 = data[i++];
+              const y2 = data[i++];
+              const x3 = data[i++];
+              const y3 = data[i++];
+
+              ctx.bezierCurveTo(x1, y1, x2, y2, x3, y3);
+              xi = x3;
+              yi = y3;
+            break;
           case CMD.A:
               const cx = data[i++];
               const cy = data[i++];
@@ -2187,7 +2782,7 @@
               const psi = data[i++];
               const anticlockwise = !data[i++];
               const r = rx > ry ? rx : ry;
-              const isEllipse = mathAbs(rx - ry) > 1e-3;
+              const isEllipse = mathAbs$1(rx - ry) > 1e-3;
               let endAngle = startAngle + delta;
 
               if (isEllipse && ctx.ellipse) {
@@ -2196,8 +2791,19 @@
                 ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);
               }
 
-              xi = mathCos(endAngle) * rx + cx;
-              yi = mathSin(endAngle) * ry + cy;
+              xi = mathCos$1(endAngle) * rx + cx;
+              yi = mathSin$1(endAngle) * ry + cy;
+              break;
+          case CMD.R:
+              xi = data[i];
+              yi = data[i + 1];
+
+              x = data[i++];
+              y = data[i++];
+              const width = data[i++];
+              const height = data[i++];
+
+              ctx.rect(x, y, width, height);
               break;
         }
       }
@@ -2277,6 +2883,19 @@
             max2[0] = x0;
             max2[1] = y0;
             break;
+          case CMD.L:
+            fromLine(xi, yi, data[i], data[i + 1], min2, max2);
+            xi = data[i++];
+            yi = data[i++];
+            break;
+          case CMD.C:
+            fromCubic(
+              xi, yi, data[i++], data[i++], data[i++], data[i++], data[i], data[i + 1],
+              min2, max2
+            );
+            xi = data[i++];
+            yi = data[i++];
+            break;
           case CMD.A: 
             const cx = data[i++];
             const cy = data[i++];
@@ -2293,8 +2912,19 @@
               cx, cy, rx, ry, startAngle, endAngle, anticlockwise, min2, max2
             );
 
-            xi = mathCos(endAngle) * rx + cx;
-            yi = mathSin(endAngle) * ry + cy;
+            xi = mathCos$1(endAngle) * rx + cx;
+            yi = mathSin$1(endAngle) * ry + cy;
+            break;
+          case CMD.R:
+            x0 = xi = data[i++];
+            y0 = yi = data[i++];
+            const width = data[i++];
+            const height = data[i++];
+            fromLine(x0, y0, x0 + width, y0 + height, min2, max2);
+            break;
+          case CMD.Z:
+            xi = x0;
+            yi = y0;
             break;
         }
 
@@ -2461,11 +3091,11 @@
     static extend(defaultProps) {
       class Sub extends Path {
         getDefaultStyle() {
-          return clone(defaultProps.style);
+          return clone$1(defaultProps.style);
         }
 
         getDefaultShape() {
-          return clone(defaultProps.shape);
+          return clone$1(defaultProps.shape);
         }
 
         constructor(opts) {
@@ -2583,11 +3213,75 @@
 
   BezierCurve.prototype.type = 'bezier-curve';
 
-  function buildPath(ctx, shape, closePath) {
+  /**
+   * 贝塞尔平滑曲线
+   */
+
+  function smoothBezier(points, smooth, isLoop, constraint) {
+    console.error('寻找控制点的函数，不知道在干嘛');
+    const cps = [];
+
+    const v = [];
+    const v1 = [];
+    const v2 = [];
+    let prevPoint;
+    let nextPoint;
+    for (let i = 0, len = points.length; i < len; i++) {
+      const point = points[i];
+
+      if (isLoop) ; else {
+        if (i === 0 || i === len - 1) {
+          cps.push(clone(point));
+          continue; // 直接走下次循环
+        } else {
+          prevPoint = points[i - 1];
+          nextPoint = points[i + 1];
+        }
+      }
+
+      sub(v, nextPoint, prevPoint);
+
+      scale(v, v, smooth);
+
+      let d0 = distance(point, prevPoint);
+      let d1 = distance(point, nextPoint);
+      const sum = d0 + d1;
+      if (sum != 0) {
+        d0 /= sum;
+        d1 /= sum;
+      }
+
+      scale(v1, v, -d0);
+      scale(v2, v, d1);
+      const cp0 = add([], point, v1);
+      const cp1 = add([], point, v2);
+      
+      cps.push(cp0);
+      cps.push(cp1);
+    }
+
+    return cps;
+  }
+
+  function buildPath$2(ctx, shape, closePath) {
     const smooth = shape.smooth;
     let points = shape.points;
     if (points && points.length >= 2) {
-      if (smooth) ; else {
+      if (smooth) {
+        const controlPoints = smoothBezier(
+          points, smooth, closePath, shape.smoothConstraint
+        );
+        ctx.moveTo(points[0][0], points[0][1]);
+        const len = points.length;
+        for (let i = 0; i < (closePath ? len : len - 1); i++) {
+          const cp1 = controlPoints[i * 2];
+          const cp2 = controlPoints[i * 2 + 1];
+          const p = points[(i + 1) % len];
+          ctx.bezierCurveTo(
+            cp1[0], cp1[1], cp2[0], cp2[1], p[0], p[1]
+          );
+        }
+      } else {
         ctx.moveTo(points[0][0], points[0][1]);
         for (let i = 1, l = points.length; i < l; i++) {
           ctx.lineTo(points[i][0], points[i][1]);
@@ -2613,7 +3307,7 @@
     }
 
     buildPath(ctx, shape) {
-      buildPath(ctx, shape, false);
+      buildPath$2(ctx, shape, false);
     }
 
     getDefaultShape() {
@@ -2650,7 +3344,7 @@
     }
 
     buildPath(ctx, shape) {
-      buildPath(ctx, shape, true);
+      buildPath$2(ctx, shape, true);
     }
   }
 
@@ -2739,121 +3433,474 @@
 
   Line.prototype.type = 'line';
 
-  const DEFAULT_FONT_SIZE = 12;
-  const DEFAULT_FONT_FAMILY = 'sans-serif';
-  const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px ${DEFAULT_FONT_FAMILY}`;
-  const platformApi = {
-    createCanvas() {
-      return typeof document !== 'undefined' 
-      && document.createElement('canvas');
-    },
+  function buildPath$1(ctx, shape) {
+    let x = shape.x;
+    let y = shape.y;
+    let width = shape.width;
+    let height = shape.height;
+    let r = shape.r;
+    let r1, r2, r3, r4;
 
-    measureText: (function() {
-      let _ctx;
-      let _cachedFont;
-      return (text, font = undefined) => {
-        if (!_ctx) {
-          const canvas = platformApi.createCanvas();
-          _ctx = canvas && canvas.getContext('2d');
-        }
-        if (_ctx) {
-          if (_cachedFont !== font) {
-            _cachedFont = _ctx.font = font || DEFAULT_FONT;
+    if (width < 0) {
+      x += width;
+      width = -width;
+    }
+
+    if (height < 0) {
+      y += height;
+      height = -height;
+    }
+
+    // 左上、右上、右下、左下角的半径依次为r1、r2、r3、r4
+    // r缩写为1         相当于 [1, 1, 1, 1]
+    // r缩写为[1]       相当于 [1, 1, 1, 1]
+    // r缩写为[1, 2]    相当于 [1, 2, 1, 2]
+    // r缩写为[1, 2, 3] 相当于 [1, 2, 3, 2]
+    if (typeof r === 'number') {
+      r1 = r2 = r3 = r4 = r;
+    } else if (r instanceof Array) {
+      if (r.length === 1) {
+        r1 = r2 = r3 = r4 = r[0];
+      } else if (r.length === 2) {
+        r1 = r3 = r[0];
+        r2 = r4 = r[1];
+      } else if (r.length === 3) {
+        r1 = r[0];
+        r2 = r4 = r[1];
+        r3 = r[2];
+      } else {
+        r1 = r[0];
+        r2 = r[1];
+        r3 = r[2];
+        r4 = r[3];
+      }
+    } else {
+      r1 = r2 = r3 = r4 = 0;
+    }
+
+    let total;
+    // 赋值运算符优先级很低
+    // 减小
+    // 结果相加都是width || height
+    if (r1 + r2 > width) {
+      total = r1 + r2;
+      r1 *= width / total;
+      r2 *= width / total;
+    } else if (r3 + r4 > width) {
+      total = r3 + r4;
+      r3 *= width / total;
+      r4 *= width / total;
+    } else if (r2 + r3 > height) {
+      total = r2 + r3;
+      r2 *= height / total;
+      r3 *= height / total;
+    } else if (r1 + r4 > height) {
+      total = r1 + r4;
+      r1 *= height / total;
+      r4 *= height / total;
+    }
+
+    // arc() 方法创建一个以坐标 (x, y) 为中心，以 radius 为半径的圆弧。路径从 startAngle 开始，到 endAngle 结束，路径方向由 counterclockwise 参数决定（默认为顺时针方向）。
+    ctx.moveTo(x + r1, y);
+    ctx.lineTo(x + width - r2, y);
+    r2 !== 0 && ctx.arc(x + width - r2, y + r2, r2, -Math.PI / 2, 0);
+    ctx.lineTo(x + width, y + height - r3);
+    r3 !== 0 && ctx.arc(x + width - r3, y + height - r3, r3, 0, Math.PI / 2);
+    ctx.lineTo(x + r4, y + height);
+    r4 !== 0 && ctx.arc(x + r4, y + height - r4, r4, Math.PI / 2, Math.PI);
+    ctx.lineTo(x, y + r1);
+    r1 !== 0 && ctx.arc(x + r1, y + r1, r1, Math.PI, Math.PI * 1.5);
+  }
+
+  /**
+   * 矩形
+   */
+
+  class RectShape {
+    x = 0
+    y = 0
+    width = 0
+    height = 0
+
+    // 左上、右上、右下、左下
+    // r = 1 ->         r = [1, 1, 1, 1]
+    // r = [1] ->       r = [1, 1, 1, 1]
+    // r = [1, 2] ->    r = [1, 2, 1, 2]
+    // r = [1, 2, 3] -> r = [1, 2, 3, 2]
+    r
+  }
+
+  class Rect extends Path {
+    constructor(opts) {
+      super(opts);
+    }
+
+    getDefaultShape() {
+      return new RectShape();
+    }
+
+    buildPath(ctx, shape) {
+      let x = shape.x;
+      let y = shape.y;
+      let width = shape.width;
+      let height = shape.height;
+
+      if (!shape.r) {
+        ctx.rect(x, y, width, height);
+      } else {
+        buildPath$1(ctx, shape);
+      }
+    }
+  }
+
+  Rect.prototype.type = 'rect';
+
+  const PI = Math.PI;
+  const PI2 = PI * 2;
+  const mathSin = Math.sin;
+  const mathCos = Math.cos;
+  const mathACos = Math.acos;
+  const mathATan2 = Math.atan2;
+  const mathAbs = Math.abs;
+  const mathSqrt = Math.sqrt;
+  const mathMax = Math.max;
+  const mathMin = Math.min;
+  const e = 1e-4;
+
+  function intersect(
+      x0, y0,
+      x1, y1,
+      x2, y2,
+      x3, y3
+  ) {
+      const dx10 = x1 - x0;
+      const dy10 = y1 - y0;
+      const dx32 = x3 - x2;
+      const dy32 = y3 - y2;
+      let t = dy32 * dx10 - dx32 * dy10;
+      if (t * t < e) {
+          return;
+      }
+      t = (dx32 * (y0 - y2) - dy32 * (x0 - x2)) / t;
+      return [x0 + t * dx10, y0 + t * dy10];
+  }
+
+  // Compute perpendicular offset line of length rc.
+  function computeCornerTangents(
+      x0, y0,
+      x1, y1,
+      radius, cr,
+      clockwise
+  ) {
+      const x01 = x0 - x1;
+      const y01 = y0 - y1;
+      const lo = (clockwise ? cr : -cr) / mathSqrt(x01 * x01 + y01 * y01);
+      const ox = lo * y01;
+      const oy = -lo * x01;
+      const x11 = x0 + ox;
+      const y11 = y0 + oy;
+      const x10 = x1 + ox;
+      const y10 = y1 + oy;
+      const x00 = (x11 + x10) / 2;
+      const y00 = (y11 + y10) / 2;
+      const dx = x10 - x11;
+      const dy = y10 - y11;
+      const d2 = dx * dx + dy * dy;
+      const r = radius - cr;
+      const s = x11 * y10 - x10 * y11;
+      const d = (dy < 0 ? -1 : 1) * mathSqrt(mathMax(0, r * r * d2 - s * s));
+      let cx0 = (s * dy - dx * d) / d2;
+      let cy0 = (-s * dx - dy * d) / d2;
+      const cx1 = (s * dy + dx * d) / d2;
+      const cy1 = (-s * dx + dy * d) / d2;
+      const dx0 = cx0 - x00;
+      const dy0 = cy0 - y00;
+      const dx1 = cx1 - x00;
+      const dy1 = cy1 - y00;
+
+      // Pick the closer of the two intersection points
+      // TODO: Is there a faster way to determine which intersection to use?
+      if (dx0 * dx0 + dy0 * dy0 > dx1 * dx1 + dy1 * dy1) {
+          cx0 = cx1;
+          cy0 = cy1;
+      }
+
+      return {
+          cx: cx0,
+          cy: cy0,
+          x0: -ox,
+          y0: -oy,
+          x1: cx0 * (radius / r - 1),
+          y1: cy0 * (radius / r - 1)
+      };
+  }
+
+  // For compatibility, don't use normalizeCssArray
+  // 5 represents [5, 5, 5, 5]
+  // [5] represents [5, 5, 0, 0]
+  // [5, 10] represents [5, 5, 10, 10]
+  // [5, 10, 15] represents [5, 10, 15, 15]
+  // [5, 10, 15, 20] represents [5, 10, 15, 20]
+  function normalizeCornerRadius(cr) {
+      let arr;
+      if (isArray(cr)) {
+          const len = cr.length;
+          if (!len) {
+              return cr;
           }
-          return _ctx.measureText(text);
-        } 
+          if (len === 1) {
+              arr = [cr[0], cr[0], 0, 0];
+          }
+          else if (len === 2) {
+              arr = [cr[0], cr[0], cr[1], cr[1]];
+          }
+          else if (len === 3) {
+              arr = cr.concat(cr[2]);
+          }
+          else {
+              arr = cr;
+          }
       }
-    })(),
-  };
-
-  class Entry {
-    value
-
-    constructor(val) {
-      this.value = val;
-    }
+      else {
+          arr = [cr, cr, cr, cr];
+      }
+      return arr;
   }
 
-  class LinkedList {
-    _len = 0
+  function buildPath(ctx, shape) {
+      let radius = mathMax(shape.r, 0);
+      let innerRadius = mathMax(shape.r0 || 0, 0);
+      const hasRadius = radius > 0;
+      const hasInnerRadius = innerRadius > 0;
 
-    len() {
-      return this._len;
-    }
-
-    insertEntry(entry) {
-      if (!this.head) {
-        this.head = this.tail = entry;
-      }
-      this._len++;
-    }
-  }
-
-  class LRU {
-    _list = new LinkedList()
-    _maxSize = 10
-    _map = {}
-    
-    constructor(maxSize) {
-      this._maxSize = maxSize;
-    }
-
-    get(key) {
-      this._map[key];
-      this._list;
-    }
-
-    put(key, value) {
-      const list = this._list;
-      const map = this._map;
-      let removed = null;
-      if (map[key] == null) {
-        const len = list.len();
-        let entry = this._lastRemovedEntry;
-
-        if (len >= this._maxSize && len > 0) ;
-
-        if (entry) ; else {
-          entry = new Entry(value);
-        }
-        entry.key = key;
-        list.insertEntry(entry);
-        map[key] = entry;
+      if (!hasRadius && !hasInnerRadius) {
+          return;
       }
 
-      return removed;
+      if (!hasRadius) {
+          // use innerRadius as radius if no radius
+          radius = innerRadius;
+          innerRadius = 0;
+      }
+
+      if (innerRadius > radius) {
+          // swap, ensure that radius is always larger than innerRadius
+          const tmp = radius;
+          radius = innerRadius;
+          innerRadius = tmp;
+      }
+
+      const { startAngle, endAngle } = shape;
+      if (isNaN(startAngle) || isNaN(endAngle)) {
+          return;
+      }
+
+      const { cx, cy } = shape;
+      const clockwise = !!shape.clockwise;
+
+      let arc = mathAbs(endAngle - startAngle);
+      const mod = arc > PI2 && arc % PI2;
+      mod > e && (arc = mod);
+
+      // is a point
+      if (!(radius > e)) {
+          ctx.moveTo(cx, cy);
+      }
+      // is a circle or annulus
+      else if (arc > PI2 - e) {
+          ctx.moveTo(
+              cx + radius * mathCos(startAngle),
+              cy + radius * mathSin(startAngle)
+          );
+          ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
+
+          if (innerRadius > e) {
+              ctx.moveTo(
+                  cx + innerRadius * mathCos(endAngle),
+                  cy + innerRadius * mathSin(endAngle)
+              );
+              ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
+          }
+      }
+      // is a circular or annular sector
+      else {
+          let icrStart;
+          let icrEnd;
+          let ocrStart;
+          let ocrEnd;
+
+          let ocrs;
+          let ocre;
+          let icrs;
+          let icre;
+
+          let ocrMax;
+          let icrMax;
+          let limitedOcrMax;
+          let limitedIcrMax;
+
+          let xre;
+          let yre;
+          let xirs;
+          let yirs;
+
+          const xrs = radius * mathCos(startAngle);
+          const yrs = radius * mathSin(startAngle);
+          const xire = innerRadius * mathCos(endAngle);
+          const yire = innerRadius * mathSin(endAngle);
+
+          const hasArc = arc > e;
+          if (hasArc) {
+              const cornerRadius = shape.cornerRadius;
+              if (cornerRadius) {
+                  [icrStart, icrEnd, ocrStart, ocrEnd] = normalizeCornerRadius(cornerRadius);
+              }
+
+              const halfRd = mathAbs(radius - innerRadius) / 2;
+              ocrs = mathMin(halfRd, ocrStart);
+              ocre = mathMin(halfRd, ocrEnd);
+              icrs = mathMin(halfRd, icrStart);
+              icre = mathMin(halfRd, icrEnd);
+
+              limitedOcrMax = ocrMax = mathMax(ocrs, ocre);
+              limitedIcrMax = icrMax = mathMax(icrs, icre);
+
+              // draw corner radius
+              if (ocrMax > e || icrMax > e) {
+                  xre = radius * mathCos(endAngle);
+                  yre = radius * mathSin(endAngle);
+                  xirs = innerRadius * mathCos(startAngle);
+                  yirs = innerRadius * mathSin(startAngle);
+
+                  // restrict the max value of corner radius
+                  if (arc < PI) {
+                      const it = intersect(xrs, yrs, xirs, yirs, xre, yre, xire, yire);
+                      if (it) {
+                          const x0 = xrs - it[0];
+                          const y0 = yrs - it[1];
+                          const x1 = xre - it[0];
+                          const y1 = yre - it[1];
+                          const a = 1 / mathSin(
+                              // eslint-disable-next-line max-len
+                              mathACos((x0 * x1 + y0 * y1) / (mathSqrt(x0 * x0 + y0 * y0) * mathSqrt(x1 * x1 + y1 * y1))) / 2
+                          );
+                          const b = mathSqrt(it[0] * it[0] + it[1] * it[1]);
+                          limitedOcrMax = mathMin(ocrMax, (radius - b) / (a + 1));
+                          limitedIcrMax = mathMin(icrMax, (innerRadius - b) / (a - 1));
+                      }
+                  }
+              }
+          }
+
+          // the sector is collapsed to a line
+          if (!hasArc) {
+              ctx.moveTo(cx + xrs, cy + yrs);
+          }
+          // the outer ring has corners
+          else if (limitedOcrMax > e) {
+              const crStart = mathMin(ocrStart, limitedOcrMax);
+              const crEnd = mathMin(ocrEnd, limitedOcrMax);
+              const ct0 = computeCornerTangents(xirs, yirs, xrs, yrs, radius, crStart, clockwise);
+              const ct1 = computeCornerTangents(xre, yre, xire, yire, radius, crEnd, clockwise);
+
+              ctx.moveTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
+
+              // Have the corners merged?
+              if (limitedOcrMax < ocrMax && crStart === crEnd) {
+                  // eslint-disable-next-line max-len
+                  ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedOcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
+              }
+              else {
+                  // draw the two corners and the ring
+                  // eslint-disable-next-line max-len
+                  crStart > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crStart, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
+                  // eslint-disable-next-line max-len
+                  ctx.arc(cx, cy, radius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), !clockwise);
+                  // eslint-disable-next-line max-len
+                  crEnd > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crEnd, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
+              }
+          }
+          // the outer ring is a circular arc
+          else {
+              ctx.moveTo(cx + xrs, cy + yrs);
+              ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
+          }
+
+          // no inner ring, is a circular sector
+          if (!(innerRadius > e) || !hasArc) {
+              ctx.lineTo(cx + xire, cy + yire);
+          }
+          // the inner ring has corners
+          else if (limitedIcrMax > e) {
+              const crStart = mathMin(icrStart, limitedIcrMax);
+              const crEnd = mathMin(icrEnd, limitedIcrMax);
+              const ct0 = computeCornerTangents(xire, yire, xre, yre, innerRadius, -crEnd, clockwise);
+              const ct1 = computeCornerTangents(xrs, yrs, xirs, yirs, innerRadius, -crStart, clockwise);
+              ctx.lineTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
+
+              // Have the corners merged?
+              if (limitedIcrMax < icrMax && crStart === crEnd) {
+                  // eslint-disable-next-line max-len
+                  ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedIcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
+              }
+              // draw the two corners and the ring
+              else {
+                  // eslint-disable-next-line max-len
+                  crEnd > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crEnd, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
+                  // eslint-disable-next-line max-len
+                  ctx.arc(cx, cy, innerRadius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), clockwise);
+                  // eslint-disable-next-line max-len
+                  crStart > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crStart, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
+              }
+          }
+          // the inner ring is just a circular arc
+          else {
+              // FIXME: if no lineTo, svg renderer will perform an abnormal drawing behavior.
+              ctx.lineTo(cx + xire, cy + yire);
+
+              ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
+          }
+      }
+
+      ctx.closePath();
+  }
+
+  /**
+   * 扇形
+   */
+
+  class SectorShape {
+    cx = 0
+    cy = 0
+    r0 = 0
+    r = 0
+    startAngle = 0
+    endAngle = Math.PI * 2
+    clockwise = true
+
+    // 5               => [5, 5, 5, 5]
+    // [5]             => [5, 5, 0, 0]
+    // [5, 10]         => [5, 5, 10, 10]
+    // [5, 10, 15]     => [5, 10, 15, 15]
+    // [5, 10, 15, 20] => [5, 10, 15, 20]
+    cornerRadius = 0
+  }
+
+  class Sector extends Path {
+    constructor(opts) {
+      super(opts);
+    }
+
+    getDefaultShape() {
+      return new SectorShape();
+    }
+
+    buildPath(ctx, shape) {
+      buildPath(ctx, shape);
     }
   }
 
-  let textWidthCache = {};
-
-  function getWidth(text, font) {
-    font = font || DEFAULT_FONT;
-    let cacheOfFont = textWidthCache[font];
-    if (!cacheOfFont) {
-      cacheOfFont = textWidthCache[font] = new LRU(500);
-    }
-    let width = cacheOfFont.get(text);
-    if (width == null) { // undefined == null
-      width = platformApi.measureText(text, font).width;
-      cacheOfFont.put(text, width);
-    }
-
-    return width;
-  }
-
-  function getLineHeight(font) {
-    return getWidth('国', font);
-  }
-
-  function adjustTextY(y, height, verticalAlign) {
-    if (verticalAlign === 'middle') {
-      y -= height / 2;
-    } else if (verticalAlign === 'bottom') {
-      y -= height;
-    }
-    return y;
-  }
+  Sector.prototype.type = 'sector';
 
   const DEFAULT_TSPAN_STYLE = defaults({
     strokeFirst: true,
@@ -2935,6 +3982,7 @@
   class ZRText extends Displayable {
     _defaultStyle = DEFAULT_RICH_TEXT_COLOR
     _children = []
+    innerTransformable
 
     constructor(opts) {
       super();
@@ -3068,11 +4116,31 @@
       return child;
     }
 
+    addSelfToZr(zr) {
+      super.addSelfToZr(zr);
+      for (let i = 0; i < this._children.length; i++) {
+          // Also need mount __zr for case like hover detection.
+          // The case: hover on a label (position: 'top') causes host el
+          // scaled and label Y position lifts a bit so that out of the
+          // pointer, then mouse move should be able to trigger "mouseout".
+          this._children[i].__zr = zr;
+      }
+    }
+
     updateTransform() {
       const innerTransformable = this.innerTransformable;
-      if (innerTransformable) ; else {
+      if (innerTransformable) {
+        innerTransformable.updateTransform();
+        if (innerTransformable.transform) {
+          this.transform = innerTransformable.transform;
+        }
+      } else {
         super.updateTransform();
       }
+    }
+
+    setDefaultTextStyle(defaultTextStyle) {
+      this._defaultStyle = defaultTextStyle || DEFAULT_RICH_TEXT_COLOR;
     }
   }
 
@@ -3634,7 +4702,6 @@
       ctx.textBaseline = style.textBaseline;
       if (ctx.setLineDash && style.lineDash) ;
 
-      console.error('这个strokeFirst先后重要吗');
       if (style.strokeFirst) {
         if (styleHasStroke(style)) {
           ctx.strokeText(text, style.x, style.y);
@@ -4042,6 +5109,10 @@
   exports.PolygonShape = PolygonShape;
   exports.Polyline = Polyline;
   exports.PolylineShape = PolylineShape;
+  exports.Rect = Rect;
+  exports.RectShape = RectShape;
+  exports.Sector = Sector;
+  exports.SectorShape = SectorShape;
   exports.Text = ZRText;
   exports.init = init;
   exports.path = path;

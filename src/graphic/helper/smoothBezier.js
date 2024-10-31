@@ -1,16 +1,16 @@
+/**
+ * 贝塞尔平滑曲线
+ */
 import { 
   clone as v2Clone,
   sub as v2Sub,
   scale as v2Scale,
-  distance as v2Distance
+  distance as v2Distance,
+  add as v2Add
  } from '../../core/vector'
 
-export default function smoothBezier(
-  points,
-  smooth,
-  isLoop,
-  constraint
-) {
+export default function smoothBezier(points, smooth, isLoop, constraint) {
+  console.error('寻找控制点的函数，不知道在干嘛');
   const cps = [];
 
   const v = [];
