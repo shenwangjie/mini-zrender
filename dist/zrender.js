@@ -154,7 +154,7 @@
     return value !== value;
   }
 
-  function isArray(value) {
+  function isArray$1(value) {
     if (Array.isArray) {
       return Array.isArray(value);
     }
@@ -1110,7 +1110,7 @@
    * 
    * 3x2矩阵操作类
    */
-  function create() {
+  function create$1() {
     return [1, 0, 0, 1, 0, 0];
   }
 
@@ -1193,7 +1193,7 @@
         return;
       }
 
-      m = m || create();
+      m = m || create$1();
 
       if (needLocalTransform) {
         this.getLocalTransform(m);
@@ -1216,7 +1216,7 @@
       this.globalScaleRatio;
 
       // 逆变换
-      this.invTransform = this.invTransform || create();
+      this.invTransform = this.invTransform || create$1();
       invert(this.invTransform, m);
     }
 
@@ -2353,6 +2353,17 @@
     })()
   }
 
+  // 创建一个向量
+  function create(x, y) {
+    if (x == null) {
+        x = 0;
+    }
+    if (y == null) {
+        y = 0;
+    }
+    return [x, y];
+  }
+
   // 克隆
   function clone(v) {
     return [v[0], v[1]];
@@ -2388,14 +2399,14 @@
   }
 
   // 求两个向量最小值
-  function min$1(out, v1, v2) {
+  function min(out, v1, v2) {
     out[0] = Math.min(v1[0], v2[0]);
     out[1] = Math.min(v1[1], v2[1]);
     return out;
   }
 
   // 求两个向量最大值
-  function max$1(out, v1, v2) {
+  function max(out, v1, v2) {
     out[0] = Math.max(v1[0], v2[0]);
     out[1] = Math.max(v1[1], v2[1]);
     return out;
@@ -2462,6 +2473,12 @@
 
   const mathMin$1 = Math.min;
   const mathMax$1 = Math.max;
+  const mathCos$2 = Math.cos;
+  const mathSin$2 = Math.sin;
+
+  const start = create();
+  const end = create();
+  const extremity = create();
 
   function fromLine(x0, y0, x1, y1, min, max) {
     min[0] = mathMin$1(x0, x1);
@@ -2470,29 +2487,76 @@
     max[1] = mathMax$1(y0, y1);
   }
 
-  function fromArc(x, y, rx, ry, startAngle, endAngle, anticlockwise, min, max) {
-    // const vec2Min = vec2.min;
-    // const vec2Max = vec2.max;
+  function fromArc(
+    x,
+    y,
+    rx,
+    ry,
+    startAngle,
+    endAngle,
+    anticlockwise,
+    min$1,
+    max$1
+  ) {
+    const vec2Min = min;
+    const vec2Max = max;
 
     const diff = Math.abs(startAngle - endAngle);
 
     // 是一个圆
     if (diff % PI2$1 < 1e-4 && diff > 1e-4) {
-      min[0] = x - rx;
-      min[1] = y - ry;
-      max[0] = x + rx;
-      max[1] = y + ry;
+      min$1[0] = x - rx;
+      min$1[1] = y - ry;
+      max$1[0] = x + rx;
+      max$1[1] = y + ry;
       return;
     }
 
+    start[0] = mathCos$2(startAngle) * rx + x;
+    start[1] = mathSin$2(startAngle) * ry + y;
+    end[0] = mathCos$2(endAngle) * rx + x;
+    end[1] = mathSin$2(endAngle) * ry + y;
+
+    vec2Min(min$1, start, end);
+    vec2Max(max$1, start, end);
+
+    // Thresh to [0, Math.PI * 2]
+    startAngle = startAngle % PI2$1;
+    if (startAngle < 0) {
+      startAngle = startAngle + PI2$1;
+    }
+    endAngle = endAngle % PI2$1;
+    if (endAngle < 0) {
+      endAngle = endAngle + PI2$1;
+    }
+
+    if (startAngle > endAngle && !anticlockwise) {
+      endAngle += PI2$1;
+    } else if (startAngle < endAngle && anticlockwise) {
+      startAngle += PI2$1;
+    }
+    if (anticlockwise) {
+      const tmp = endAngle;
+      endAngle = startAngle;
+      startAngle = tmp;
+    }
+
+    // const number = 0;
+    // const step = (anticlockwise ? -Math.PI : Math.PI) / 2;
+    for (let angle = 0; angle < endAngle; angle += Math.PI / 2) {
+      if (angle > startAngle) {
+        extremity[0] = mathCos$2(angle) * rx + x;
+        extremity[1] = mathSin$2(angle) * ry + y;
+
+        vec2Min(min$1, extremity, min$1);
+        vec2Max(max$1, extremity, max$1);
+      }
+    }
   }
 
   const xDim = [];
   const yDim = [];
-  function fromCubic(
-    x0, y0, x1, y1, x2, y2, x3, y3,
-    min, max
-  ) {
+  function fromCubic(x0, y0, x1, y1, x2, y2, x3, y3, min, max) {
     const cubicExtrema$1 = cubicExtrema;
     const cubicAt$1 = cubicAt;
     let n = cubicExtrema$1(x0, x1, x2, x3, xDim);
@@ -2502,15 +2566,15 @@
     max[1] = -Infinity;
 
     for (let i = 0; i < n; i++) {
-        const x = cubicAt$1(x0, x1, x2, x3, xDim[i]);
-        min[0] = mathMin$1(x, min[0]);
-        max[0] = mathMax$1(x, max[0]);
+      const x = cubicAt$1(x0, x1, x2, x3, xDim[i]);
+      min[0] = mathMin$1(x, min[0]);
+      max[0] = mathMax$1(x, max[0]);
     }
     n = cubicExtrema$1(y0, y1, y2, y3, yDim);
     for (let i = 0; i < n; i++) {
-        const y = cubicAt$1(y0, y1, y2, y3, yDim[i]);
-        min[1] = mathMin$1(y, min[1]);
-        max[1] = mathMax$1(y, max[1]);
+      const y = cubicAt$1(y0, y1, y2, y3, yDim[i]);
+      min[1] = mathMin$1(y, min[1]);
+      max[1] = mathMax$1(y, max[1]);
     }
 
     min[0] = mathMin$1(x0, min[0]);
@@ -2550,11 +2614,6 @@
     Z: 6,
     R: 7
   };
-
-  const min = [];
-  const max = [];
-  const min2 = [];
-  const max2 = [];
 
   const mathAbs$1 = Math.abs;
   const mathCos$1 = Math.cos;
@@ -2732,6 +2791,8 @@
       const len = this._len;
       const ux = this._ux;
       const uy = this._uy;
+
+      let x0, y0;
       let xi, yi;
       let x, y;
       for (let i = 0; i < len;) {
@@ -2741,12 +2802,15 @@
         if (isFirst) {
           xi = data[i];
           yi = data[i + 1];
+
+          x0 = xi;
+          y0 = yi;
         }
 
         switch(cmd) {
           case CMD.M: 
-              xi = data[i++];
-              yi = data[i++];
+              x0 = xi = data[i++];
+              y0 = yi = data[i++];
               ctx.moveTo(xi, yi);
               break;
           case CMD.L:
@@ -2795,8 +2859,8 @@
               yi = mathSin$1(endAngle) * ry + cy;
               break;
           case CMD.R:
-              xi = data[i];
-              yi = data[i + 1];
+              x0 = xi = data[i];
+              y0 = yi = data[i + 1];
 
               x = data[i++];
               y = data[i++];
@@ -2805,6 +2869,10 @@
 
               ctx.rect(x, y, width, height);
               break;
+          case CMD.Z:
+              ctx.closePath();
+              xi = x0;
+              yi = y0;
         }
       }
     }
@@ -2855,8 +2923,12 @@
     }
 
     getBoundingRect() {
-      min[0] = min[1] = min2[0] = min2[1] = Number.MAX_VALUE;
-      max[0] = max[1] = max2[0] = max2[1] = -Number.MAX_VALUE;
+      const minValue = [];
+      const maxValue = [];
+      const minValue2 = [];
+      const maxValue2 = [];
+      minValue[0] = minValue[1] = minValue2[0] = minValue2[1] = Number.MAX_VALUE;
+      maxValue[0] = maxValue[1] = maxValue2[0] = maxValue2[1] = -Number.MAX_VALUE;
 
       const data = this.data;
       let xi = 0; let yi = 0;
@@ -2878,20 +2950,20 @@
           case CMD.M:
             xi = x0 = data[i++];
             yi = y0 = data[i++];
-            min2[0] = x0;
-            min2[i] = y0;
-            max2[0] = x0;
-            max2[1] = y0;
+            minValue2[0] = x0;
+            minValue2[1] = y0;
+            maxValue2[0] = x0;
+            maxValue2[1] = y0;
             break;
           case CMD.L:
-            fromLine(xi, yi, data[i], data[i + 1], min2, max2);
+            fromLine(xi, yi, data[i], data[i + 1], minValue2, maxValue2);
             xi = data[i++];
             yi = data[i++];
             break;
           case CMD.C:
             fromCubic(
               xi, yi, data[i++], data[i++], data[i++], data[i++], data[i], data[i + 1],
-              min2, max2
+              minValue2, maxValue2
             );
             xi = data[i++];
             yi = data[i++];
@@ -2909,7 +2981,7 @@
             const anticlockwise = !data[i++];
 
             fromArc(
-              cx, cy, rx, ry, startAngle, endAngle, anticlockwise, min2, max2
+              cx, cy, rx, ry, startAngle, endAngle, anticlockwise, minValue2, maxValue2
             );
 
             xi = mathCos$1(endAngle) * rx + cx;
@@ -2920,7 +2992,7 @@
             y0 = yi = data[i++];
             const width = data[i++];
             const height = data[i++];
-            fromLine(x0, y0, x0 + width, y0 + height, min2, max2);
+            fromLine(x0, y0, x0 + width, y0 + height, minValue2, maxValue2);
             break;
           case CMD.Z:
             xi = x0;
@@ -2928,12 +3000,12 @@
             break;
         }
 
-        min$1(min, min, min2);
-        max$1(max, max, max2);
+        min(minValue, minValue, minValue2);
+        max(maxValue, maxValue, maxValue2);
       }
 
       return new BoundingRect(
-        min[0], min[1], max[0] - min[0], max[1] - min[1]
+        minValue[0], minValue[1], maxValue[0] - minValue[0], maxValue[1] - minValue[1]
       );
     }
 
@@ -3557,312 +3629,251 @@
 
   const PI = Math.PI;
   const PI2 = PI * 2;
-  const mathSin = Math.sin;
-  const mathCos = Math.cos;
-  const mathACos = Math.acos;
-  const mathATan2 = Math.atan2;
-  const mathAbs = Math.abs;
-  const mathSqrt = Math.sqrt;
   const mathMax = Math.max;
   const mathMin = Math.min;
-  const e = 1e-4;
+  const mathAbs = Math.abs;
+  const mathCos = Math.cos;
+  const mathSin = Math.sin;
+
+  const e = 1e-4; //1×10^(-4) 0.0001
 
   function intersect(
-      x0, y0,
-      x1, y1,
-      x2, y2,
-      x3, y3
+    x0, y0,
+    x1, y1,
+    x2, y2,
+    x3, y3
   ) {
-      const dx10 = x1 - x0;
-      const dy10 = y1 - y0;
-      const dx32 = x3 - x2;
-      const dy32 = y3 - y2;
-      let t = dy32 * dx10 - dx32 * dy10;
-      if (t * t < e) {
-          return;
-      }
-      t = (dx32 * (y0 - y2) - dy32 * (x0 - x2)) / t;
-      return [x0 + t * dx10, y0 + t * dy10];
+    const dx10 = x1 - x0;
+    const dy10 = y1 - y0;
+    const dx32 = x3 - x2;
+    const dy32 = y3 - y2;
+    let t = dy32 * dx10 - dx32 * dy10;
+    if (t * t < e) {
+        return;
+    }
+    t = (dx32 * (y0 - y2) - dy32 * (x0 - x2)) / t;
+    return [x0 + t * dx10, y0 + t * dy10];
   }
 
-  // Compute perpendicular offset line of length rc.
-  function computeCornerTangents(
-      x0, y0,
-      x1, y1,
-      radius, cr,
-      clockwise
-  ) {
-      const x01 = x0 - x1;
-      const y01 = y0 - y1;
-      const lo = (clockwise ? cr : -cr) / mathSqrt(x01 * x01 + y01 * y01);
-      const ox = lo * y01;
-      const oy = -lo * x01;
-      const x11 = x0 + ox;
-      const y11 = y0 + oy;
-      const x10 = x1 + ox;
-      const y10 = y1 + oy;
-      const x00 = (x11 + x10) / 2;
-      const y00 = (y11 + y10) / 2;
-      const dx = x10 - x11;
-      const dy = y10 - y11;
-      const d2 = dx * dx + dy * dy;
-      const r = radius - cr;
-      const s = x11 * y10 - x10 * y11;
-      const d = (dy < 0 ? -1 : 1) * mathSqrt(mathMax(0, r * r * d2 - s * s));
-      let cx0 = (s * dy - dx * d) / d2;
-      let cy0 = (-s * dx - dy * d) / d2;
-      const cx1 = (s * dy + dx * d) / d2;
-      const cy1 = (-s * dx + dy * d) / d2;
-      const dx0 = cx0 - x00;
-      const dy0 = cy0 - y00;
-      const dx1 = cx1 - x00;
-      const dy1 = cy1 - y00;
-
-      // Pick the closer of the two intersection points
-      // TODO: Is there a faster way to determine which intersection to use?
-      if (dx0 * dx0 + dy0 * dy0 > dx1 * dx1 + dy1 * dy1) {
-          cx0 = cx1;
-          cy0 = cy1;
-      }
-
-      return {
-          cx: cx0,
-          cy: cy0,
-          x0: -ox,
-          y0: -oy,
-          x1: cx0 * (radius / r - 1),
-          y1: cy0 * (radius / r - 1)
-      };
-  }
-
-  // For compatibility, don't use normalizeCssArray
-  // 5 represents [5, 5, 5, 5]
-  // [5] represents [5, 5, 0, 0]
-  // [5, 10] represents [5, 5, 10, 10]
-  // [5, 10, 15] represents [5, 10, 15, 15]
-  // [5, 10, 15, 20] represents [5, 10, 15, 20]
   function normalizeCornerRadius(cr) {
-      let arr;
-      if (isArray(cr)) {
-          const len = cr.length;
-          if (!len) {
-              return cr;
-          }
-          if (len === 1) {
-              arr = [cr[0], cr[0], 0, 0];
-          }
-          else if (len === 2) {
-              arr = [cr[0], cr[0], cr[1], cr[1]];
-          }
-          else if (len === 3) {
-              arr = cr.concat(cr[2]);
-          }
-          else {
-              arr = cr;
-          }
-      }
-      else {
-          arr = [cr, cr, cr, cr];
-      }
-      return arr;
+    let arr;
+    if (isArray(cr)) {
+        const len = cr.length;
+        if (!len) {
+            return cr;
+        }
+        if (len === 1) {
+            arr = [cr[0], cr[0], 0, 0];
+        }
+        else if (len === 2) {
+            arr = [cr[0], cr[0], cr[1], cr[1]];
+        }
+        else if (len === 3) {
+            arr = cr.concat(cr[2]);
+        }
+        else {
+            arr = cr;
+        }
+    }
+    else {
+        arr = [cr, cr, cr, cr];
+    }
+    return arr;
   }
 
   function buildPath(ctx, shape) {
-      let radius = mathMax(shape.r, 0);
-      let innerRadius = mathMax(shape.r0 || 0, 0);
-      const hasRadius = radius > 0;
-      const hasInnerRadius = innerRadius > 0;
+    let radius = mathMax(shape.r, 0);
+    let innerRadius = mathMax(shape.r0 || 0, 0);
+    const hasRadius = radius > 0;
+    const hasInnerRadius = innerRadius > 0;
 
-      if (!hasRadius && !hasInnerRadius) {
-          return;
+    if (!hasRadius && !hasInnerRadius) {
+      return;
+    }
+
+    if (!hasRadius) {
+      radius = innerRadius;
+      innerRadius = 0;
+    }
+
+    if (innerRadius > radius) {
+      const tmp = radius;
+      radius = innerRadius;
+      innerRadius = tmp;
+    }
+
+    const { startAngle, endAngle } = shape;
+    if (isNaN(startAngle) || isNaN(endAngle)) {
+      return;
+    }
+
+    const { cx, cy } = shape;
+    const clockwise = !!shape.clockwise;
+
+    let arc = mathAbs(endAngle - startAngle);
+    const mod = arc > PI2 && arc % PI2; // false || 取余
+    mod > e && (arc = mod);
+
+    if (!(radius > e)) {
+      // 是一个点
+      ctx.moveTo(cx, cy);
+    } else if (arc > PI2 - e) {
+      // 是一个圆
+      ctx.moveTo(
+        cx + radius * mathCos(startAngle),
+        cy + radius * mathSin(startAngle)
+      );
+      ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
+      if (innerRadius > e) {
+        ctx.moveTo(
+          cx + innerRadius * mathCos(endAngle),
+          cy + innerRadius * mathSin(endAngle)
+        );
+        ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
       }
+    }
+    // is a circular or annular sector
+    else {
+      console.error('有时间再慢慢研究吧，太长了');
+      let icrStart;
+      let icrEnd;
+      let ocrStart;
+      let ocrEnd;
 
-      if (!hasRadius) {
-          // use innerRadius as radius if no radius
-          radius = innerRadius;
-          innerRadius = 0;
-      }
+      let ocrs;
+      let ocre;
+      let icrs;
+      let icre;
 
-      if (innerRadius > radius) {
-          // swap, ensure that radius is always larger than innerRadius
-          const tmp = radius;
-          radius = innerRadius;
-          innerRadius = tmp;
-      }
+      let ocrMax;
+      let icrMax;
+      let limitedOcrMax;
+      let limitedIcrMax;
 
-      const { startAngle, endAngle } = shape;
-      if (isNaN(startAngle) || isNaN(endAngle)) {
-          return;
-      }
+      let xre;
+      let yre;
+      let xirs;
+      let yirs;
 
-      const { cx, cy } = shape;
-      const clockwise = !!shape.clockwise;
+      const xrs = radius * mathCos(startAngle);
+      const yrs = radius * mathSin(startAngle);
+      const xire = innerRadius * mathCos(endAngle);
+      const yire = innerRadius * mathSin(endAngle);
 
-      let arc = mathAbs(endAngle - startAngle);
-      const mod = arc > PI2 && arc % PI2;
-      mod > e && (arc = mod);
-
-      // is a point
-      if (!(radius > e)) {
-          ctx.moveTo(cx, cy);
-      }
-      // is a circle or annulus
-      else if (arc > PI2 - e) {
-          ctx.moveTo(
-              cx + radius * mathCos(startAngle),
-              cy + radius * mathSin(startAngle)
-          );
-          ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
-
-          if (innerRadius > e) {
-              ctx.moveTo(
-                  cx + innerRadius * mathCos(endAngle),
-                  cy + innerRadius * mathSin(endAngle)
-              );
-              ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
+      const hasArc = arc > e;
+      if (hasArc) {
+          const cornerRadius = shape.cornerRadius;
+          if (cornerRadius) {
+              [icrStart, icrEnd, ocrStart, ocrEnd] = normalizeCornerRadius(cornerRadius);
           }
-      }
-      // is a circular or annular sector
-      else {
-          let icrStart;
-          let icrEnd;
-          let ocrStart;
-          let ocrEnd;
 
-          let ocrs;
-          let ocre;
-          let icrs;
-          let icre;
+          const halfRd = mathAbs(radius - innerRadius) / 2;
+          ocrs = mathMin(halfRd, ocrStart);
+          ocre = mathMin(halfRd, ocrEnd);
+          icrs = mathMin(halfRd, icrStart);
+          icre = mathMin(halfRd, icrEnd);
 
-          let ocrMax;
-          let icrMax;
-          let limitedOcrMax;
-          let limitedIcrMax;
+          limitedOcrMax = ocrMax = mathMax(ocrs, ocre);
+          limitedIcrMax = icrMax = mathMax(icrs, icre);
 
-          let xre;
-          let yre;
-          let xirs;
-          let yirs;
+          // draw corner radius
+          if (ocrMax > e || icrMax > e) {
+              xre = radius * mathCos(endAngle);
+              yre = radius * mathSin(endAngle);
+              xirs = innerRadius * mathCos(startAngle);
+              yirs = innerRadius * mathSin(startAngle);
 
-          const xrs = radius * mathCos(startAngle);
-          const yrs = radius * mathSin(startAngle);
-          const xire = innerRadius * mathCos(endAngle);
-          const yire = innerRadius * mathSin(endAngle);
-
-          const hasArc = arc > e;
-          if (hasArc) {
-              const cornerRadius = shape.cornerRadius;
-              if (cornerRadius) {
-                  [icrStart, icrEnd, ocrStart, ocrEnd] = normalizeCornerRadius(cornerRadius);
-              }
-
-              const halfRd = mathAbs(radius - innerRadius) / 2;
-              ocrs = mathMin(halfRd, ocrStart);
-              ocre = mathMin(halfRd, ocrEnd);
-              icrs = mathMin(halfRd, icrStart);
-              icre = mathMin(halfRd, icrEnd);
-
-              limitedOcrMax = ocrMax = mathMax(ocrs, ocre);
-              limitedIcrMax = icrMax = mathMax(icrs, icre);
-
-              // draw corner radius
-              if (ocrMax > e || icrMax > e) {
-                  xre = radius * mathCos(endAngle);
-                  yre = radius * mathSin(endAngle);
-                  xirs = innerRadius * mathCos(startAngle);
-                  yirs = innerRadius * mathSin(startAngle);
-
-                  // restrict the max value of corner radius
-                  if (arc < PI) {
-                      const it = intersect(xrs, yrs, xirs, yirs, xre, yre, xire, yire);
-                      if (it) {
-                          const x0 = xrs - it[0];
-                          const y0 = yrs - it[1];
-                          const x1 = xre - it[0];
-                          const y1 = yre - it[1];
-                          const a = 1 / mathSin(
-                              // eslint-disable-next-line max-len
-                              mathACos((x0 * x1 + y0 * y1) / (mathSqrt(x0 * x0 + y0 * y0) * mathSqrt(x1 * x1 + y1 * y1))) / 2
-                          );
-                          const b = mathSqrt(it[0] * it[0] + it[1] * it[1]);
-                          limitedOcrMax = mathMin(ocrMax, (radius - b) / (a + 1));
-                          limitedIcrMax = mathMin(icrMax, (innerRadius - b) / (a - 1));
-                      }
+              // restrict the max value of corner radius
+              if (arc < PI) {
+                  const it = intersect(xrs, yrs, xirs, yirs, xre, yre, xire, yire);
+                  if (it) {
+                      const x0 = xrs - it[0];
+                      const y0 = yrs - it[1];
+                      const x1 = xre - it[0];
+                      const y1 = yre - it[1];
+                      const a = 1 / mathSin(
+                          // eslint-disable-next-line max-len
+                          mathACos((x0 * x1 + y0 * y1) / (mathSqrt(x0 * x0 + y0 * y0) * mathSqrt(x1 * x1 + y1 * y1))) / 2
+                      );
+                      const b = mathSqrt(it[0] * it[0] + it[1] * it[1]);
+                      limitedOcrMax = mathMin(ocrMax, (radius - b) / (a + 1));
+                      limitedIcrMax = mathMin(icrMax, (innerRadius - b) / (a - 1));
                   }
               }
           }
-
-          // the sector is collapsed to a line
-          if (!hasArc) {
-              ctx.moveTo(cx + xrs, cy + yrs);
-          }
-          // the outer ring has corners
-          else if (limitedOcrMax > e) {
-              const crStart = mathMin(ocrStart, limitedOcrMax);
-              const crEnd = mathMin(ocrEnd, limitedOcrMax);
-              const ct0 = computeCornerTangents(xirs, yirs, xrs, yrs, radius, crStart, clockwise);
-              const ct1 = computeCornerTangents(xre, yre, xire, yire, radius, crEnd, clockwise);
-
-              ctx.moveTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
-
-              // Have the corners merged?
-              if (limitedOcrMax < ocrMax && crStart === crEnd) {
-                  // eslint-disable-next-line max-len
-                  ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedOcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
-              }
-              else {
-                  // draw the two corners and the ring
-                  // eslint-disable-next-line max-len
-                  crStart > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crStart, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
-                  // eslint-disable-next-line max-len
-                  ctx.arc(cx, cy, radius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), !clockwise);
-                  // eslint-disable-next-line max-len
-                  crEnd > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crEnd, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
-              }
-          }
-          // the outer ring is a circular arc
-          else {
-              ctx.moveTo(cx + xrs, cy + yrs);
-              ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
-          }
-
-          // no inner ring, is a circular sector
-          if (!(innerRadius > e) || !hasArc) {
-              ctx.lineTo(cx + xire, cy + yire);
-          }
-          // the inner ring has corners
-          else if (limitedIcrMax > e) {
-              const crStart = mathMin(icrStart, limitedIcrMax);
-              const crEnd = mathMin(icrEnd, limitedIcrMax);
-              const ct0 = computeCornerTangents(xire, yire, xre, yre, innerRadius, -crEnd, clockwise);
-              const ct1 = computeCornerTangents(xrs, yrs, xirs, yirs, innerRadius, -crStart, clockwise);
-              ctx.lineTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
-
-              // Have the corners merged?
-              if (limitedIcrMax < icrMax && crStart === crEnd) {
-                  // eslint-disable-next-line max-len
-                  ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedIcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
-              }
-              // draw the two corners and the ring
-              else {
-                  // eslint-disable-next-line max-len
-                  crEnd > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crEnd, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
-                  // eslint-disable-next-line max-len
-                  ctx.arc(cx, cy, innerRadius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), clockwise);
-                  // eslint-disable-next-line max-len
-                  crStart > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crStart, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
-              }
-          }
-          // the inner ring is just a circular arc
-          else {
-              // FIXME: if no lineTo, svg renderer will perform an abnormal drawing behavior.
-              ctx.lineTo(cx + xire, cy + yire);
-
-              ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
-          }
       }
 
-      ctx.closePath();
+      // the sector is collapsed to a line
+      if (!hasArc) {
+          ctx.moveTo(cx + xrs, cy + yrs);
+      }
+      // the outer ring has corners
+      else if (limitedOcrMax > e) {
+          const crStart = mathMin(ocrStart, limitedOcrMax);
+          const crEnd = mathMin(ocrEnd, limitedOcrMax);
+          const ct0 = computeCornerTangents(xirs, yirs, xrs, yrs, radius, crStart, clockwise);
+          const ct1 = computeCornerTangents(xre, yre, xire, yire, radius, crEnd, clockwise);
+
+          ctx.moveTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
+
+          // Have the corners merged?
+          if (limitedOcrMax < ocrMax && crStart === crEnd) {
+              // eslint-disable-next-line max-len
+              ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedOcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
+          }
+          else {
+              // draw the two corners and the ring
+              // eslint-disable-next-line max-len
+              crStart > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crStart, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
+              // eslint-disable-next-line max-len
+              ctx.arc(cx, cy, radius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), !clockwise);
+              // eslint-disable-next-line max-len
+              crEnd > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crEnd, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
+          }
+      }
+      // the outer ring is a circular arc
+      else {
+          ctx.moveTo(cx + xrs, cy + yrs);
+          ctx.arc(cx, cy, radius, startAngle, endAngle, !clockwise);
+      }
+
+      // no inner ring, is a circular sector
+      if (!(innerRadius > e) || !hasArc) {
+          ctx.lineTo(cx + xire, cy + yire);
+      }
+      // the inner ring has corners
+      else if (limitedIcrMax > e) {
+          const crStart = mathMin(icrStart, limitedIcrMax);
+          const crEnd = mathMin(icrEnd, limitedIcrMax);
+          const ct0 = computeCornerTangents(xire, yire, xre, yre, innerRadius, -crEnd, clockwise);
+          const ct1 = computeCornerTangents(xrs, yrs, xirs, yirs, innerRadius, -crStart, clockwise);
+          ctx.lineTo(cx + ct0.cx + ct0.x0, cy + ct0.cy + ct0.y0);
+
+          // Have the corners merged?
+          if (limitedIcrMax < icrMax && crStart === crEnd) {
+              // eslint-disable-next-line max-len
+              ctx.arc(cx + ct0.cx, cy + ct0.cy, limitedIcrMax, mathATan2(ct0.y0, ct0.x0), mathATan2(ct1.y0, ct1.x0), !clockwise);
+          }
+          // draw the two corners and the ring
+          else {
+              // eslint-disable-next-line max-len
+              crEnd > 0 && ctx.arc(cx + ct0.cx, cy + ct0.cy, crEnd, mathATan2(ct0.y0, ct0.x0), mathATan2(ct0.y1, ct0.x1), !clockwise);
+              // eslint-disable-next-line max-len
+              ctx.arc(cx, cy, innerRadius, mathATan2(ct0.cy + ct0.y1, ct0.cx + ct0.x1), mathATan2(ct1.cy + ct1.y1, ct1.cx + ct1.x1), clockwise);
+              // eslint-disable-next-line max-len
+              crStart > 0 && ctx.arc(cx + ct1.cx, cy + ct1.cy, crStart, mathATan2(ct1.y1, ct1.x1), mathATan2(ct1.y0, ct1.x0), !clockwise);
+          }
+      }
+      // the inner ring is just a circular arc
+      else {
+          // FIXME: if no lineTo, svg renderer will perform an abnormal drawing behavior.
+          ctx.lineTo(cx + xire, cy + yire);
+
+          ctx.arc(cx, cy, innerRadius, endAngle, startAngle, clockwise);
+      }
+    }
+
+    ctx.closePath();
   }
 
   /**
@@ -4486,7 +4497,7 @@
           : lineType === 'dotted'
                   ? [lineWidth]
                   : isNumber(lineType)
-                        ? [lineType] : isArray(lineType) ? lineType : null;
+                        ? [lineType] : isArray$1(lineType) ? lineType : null;
   }
 
   function getLineDash(el) {

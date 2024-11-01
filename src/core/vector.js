@@ -1,3 +1,14 @@
+// 创建一个向量
+export function create(x, y) {
+  if (x == null) {
+      x = 0;
+  }
+  if (y == null) {
+      y = 0;
+  }
+  return [x, y];
+}
+
 // 克隆
 export function clone(v) {
   return [v[0], v[1]];

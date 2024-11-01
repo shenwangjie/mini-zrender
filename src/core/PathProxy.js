@@ -15,11 +15,6 @@ const CMD = {
   R: 7
 }
 
-const min = [];
-const max = [];
-const min2 = [];
-const max2 = [];
-
 const mathAbs = Math.abs;
 const mathMin = Math.min;
 const mathMax = Math.max;
@@ -277,6 +272,10 @@ export default class PathProxy {
 
             ctx.rect(x, y, width, height);
             break;
+        case CMD.Z:
+            ctx.closePath();
+            xi = x0;
+            yi = y0;
       }
     }
   }
@@ -329,8 +328,12 @@ export default class PathProxy {
   }
 
   getBoundingRect() {
-    min[0] = min[1] = min2[0] = min2[1] = Number.MAX_VALUE;
-    max[0] = max[1] = max2[0] = max2[1] = -Number.MAX_VALUE;
+    const minValue = [];
+    const maxValue = [];
+    const minValue2 = [];
+    const maxValue2 = [];
+    minValue[0] = minValue[1] = minValue2[0] = minValue2[1] = Number.MAX_VALUE;
+    maxValue[0] = maxValue[1] = maxValue2[0] = maxValue2[1] = -Number.MAX_VALUE;
 
     const data = this.data;
     let xi = 0; let yi = 0;
@@ -352,20 +355,20 @@ export default class PathProxy {
         case CMD.M:
           xi = x0 = data[i++];
           yi = y0 = data[i++];
-          min2[0] = x0;
-          min2[i] = y0;
-          max2[0] = x0;
-          max2[1] = y0;
+          minValue2[0] = x0;
+          minValue2[1] = y0;
+          maxValue2[0] = x0;
+          maxValue2[1] = y0;
           break;
         case CMD.L:
-          fromLine(xi, yi, data[i], data[i + 1], min2, max2);
+          fromLine(xi, yi, data[i], data[i + 1], minValue2, maxValue2);
           xi = data[i++];
           yi = data[i++];
           break;
         case CMD.C:
           fromCubic(
             xi, yi, data[i++], data[i++], data[i++], data[i++], data[i], data[i + 1],
-            min2, max2
+            minValue2, maxValue2
           );
           xi = data[i++];
           yi = data[i++];
@@ -383,7 +386,7 @@ export default class PathProxy {
           const anticlockwise = !data[i++];
 
           fromArc(
-            cx, cy, rx, ry, startAngle, endAngle, anticlockwise, min2, max2
+            cx, cy, rx, ry, startAngle, endAngle, anticlockwise, minValue2, maxValue2
           );
 
           xi = mathCos(endAngle) * rx + cx;
@@ -394,7 +397,7 @@ export default class PathProxy {
           y0 = yi = data[i++];
           const width = data[i++];
           const height = data[i++];
-          fromLine(x0, y0, x0 + width, y0 + height, min2, max2);
+          fromLine(x0, y0, x0 + width, y0 + height, minValue2, maxValue2);
           break;
         case CMD.Z:
           xi = x0;
@@ -402,12 +405,12 @@ export default class PathProxy {
           break;
       }
 
-      vec2.min(min, min, min2);
-      vec2.max(max, max, max2);
+      vec2.min(minValue, minValue, minValue2);
+      vec2.max(maxValue, maxValue, maxValue2);
     }
 
     return new BoundingRect(
-      min[0], min[1], max[0] - min[0], max[1] - min[1]
+      minValue[0], minValue[1], maxValue[0] - minValue[0], maxValue[1] - minValue[1]
     );
   }
 
